@@ -1,0 +1,461 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Easy Network Analysis</title>
+    <link rel="stylesheet" href="styles.css?v=20260607-label-titlecase" />
+    <link rel="stylesheet" href="network.css?v=20260607-label-titlecase" />
+  </head>
+  <body class="network-page">
+    <div class="network-shell">
+      <header class="topbar network-topbar">
+        <div class="brand">
+          <div class="brand-mark">EN</div>
+          <div><h1>Easy Network</h1></div>
+        </div>
+        <div class="manager-overview" aria-label="workspace navigation">
+          <a id="inventoryTab" class="manager-tab" href="/index.html">鏂囩墿绠＄悊搴</a>
+          <a id="networkTab" class="manager-tab active" href="/network.html">缃戠粶鍒嗘瀽</a>
+          <span id="networkSummary" class="manager-status">Network 路 0 涓潯鐩</span>
+        </div>
+        <div id="topbarGraphControls" class="topbar-graph-controls"></div>
+        <div class="topbar-actions">
+          <button id="themeToggleBtn" class="icon-button active" type="button" title="鍒囨崲涓婚" aria-label="鍒囨崲涓婚">鈽€</button>
+          <button id="languageToggleBtn" class="switch-button" type="button" title="鍒囨崲璇█" aria-label="鍒囨崲璇█">
+            <span>涓</span><span>EN</span>
+          </button>
+          <button id="saveGraphBtn" class="button primary" type="button">淇濆瓨缃戠粶</button>
+          <button id="exportGraphBtn" class="button subtle" type="button">瀵煎嚭 JSON</button>
+          <button id="exportPngBtn" class="button subtle" type="button">Screenshot</button>
+          <button id="resetGraphBtn" class="button" type="button">娓呯┖鐢诲竷</button>
+        </div>
+      </header>
+
+      <main class="network-workspace">
+        <aside id="networkSidebar" class="network-sidebar">
+          <button id="sidebarToggleBtn" class="icon-button sidebar-toggle" type="button" title="鎶樺彔宸︿晶闈㈡澘">‹</button>
+          <section id="storageImportSection" class="panel">
+            <div class="quick-import-actions">
+              <button id="scopeCurrentStorageBtn" class="button subtle" type="button" hidden>褰撳墠搴撴埧鏉＄洰</button>
+              <button id="scopeFilteredBtn" class="button subtle" type="button">绛涢€夋潯鐩</button>
+            </div>
+            <label class="field-label" for="storageScopeSelect">搴撴埧</label>
+            <select id="storageScopeSelect" class="input"></select>
+            <div id="artifactFilterPanel" class="scope-filter hidden">
+              <label class="field-label" for="artifactFilterField">绛涢€夊瓧娈</label>
+              <select id="artifactFilterField" class="input"></select>
+              <label class="field-label" for="artifactFilterValue">瀛楁鍊</label>
+              <select id="artifactFilterValue" class="input multi-value-select" multiple size="7"></select>
+              <label class="field-label" for="filterPresetSelect">Filter Preset</label>
+              <select id="filterPresetSelect" class="input"></select>
+              <div class="split-actions">
+                <button id="saveFilterPresetBtn" class="button subtle" type="button">Save Preset</button>
+                <button id="loadFilterPresetBtn" class="button subtle" type="button">Load Preset</button>
+              </div>
+              <label class="check-line" for="focusFilterOnlyToggle">
+                <input id="focusFilterOnlyToggle" type="checkbox" />
+                <span id="focusFilterOnlyLabel">Focus matches instead of filtering graph</span>
+              </label>
+              <div class="split-actions filter-apply-actions">
+                <button id="applyArtifactFilterBtn" class="button subtle" type="button">搴旂敤绛涢€夎寖鍥</button>
+                <button id="clearArtifactFilterBtn" class="button subtle" type="button">Clear Filter</button>
+              </div>
+            </div>
+            <p id="scopeStatus" class="quiet-line">褰撳墠鑼冨洿锛氭墍鏈夊簱鎴裤€</p>
+          </section>
+
+          <section class="panel layout-engine-panel">
+            <div class="section-title" id="layoutEngineTitle">Layout Mode</div>
+            <select id="layoutModeSelect" class="input">
+              <option value="spring">Spring Layout</option>
+              <option value="similarity">Similarity Layout</option>
+              <option value="circular">Circular Layout</option>
+              <option value="hierarchical">Hierarchical Layout</option>
+            </select>
+            <p id="layoutEngineHint" class="quiet-line">Only the active layout engine controls node coordinates. Metrics never move nodes.</p>
+            <details id="hierarchyRulesPanel" class="field-folder hidden">
+              <summary id="hierarchyRulesTitle">Hierarchy similarity distance</summary>
+              <p id="hierarchyRulesHint" class="quiet-line">When Hierarchical Layout is active, these similarity thresholds place closely linked nodes nearer each other.</p>
+              <div id="hierarchyRuleList" class="threshold-list"></div>
+              <button id="addHierarchyRuleBtn" class="button subtle full" type="button">Add rule</button>
+            </details>
+          </section>
+
+          <section class="panel similarity-rules-panel direct-details-panel">
+            <details id="missingValueRulesPanel" class="field-folder" open>
+              <summary id="missingValueRulesTitle">Missing values</summary>
+              <label class="check-line" for="includeEmptyFields">
+                <input id="includeEmptyFields" type="checkbox" />
+                <span>鎶婄┖鍊间篃浣滀负鍙瘮杈冨唴瀹</span>
+              </label>
+              <label class="field-label" for="missingFieldLimitInput">Skip if missing fields reach</label>
+              <input id="missingFieldLimitInput" class="input compact-number" type="number" min="0" step="1" value="0" />
+              <label class="check-line" for="removeEdgesOnMissingLimit">
+                <input id="removeEdgesOnMissingLimit" type="checkbox" checked />
+                <span id="removeEdgesOnMissingLimitLabel">Remove related edges when limit is reached</span>
+              </label>
+              <label class="check-line" for="removeNodesOnMissingLimit">
+                <input id="removeNodesOnMissingLimit" type="checkbox" />
+                <span id="removeNodesOnMissingLimitLabel">Remove related nodes when limit is reached</span>
+              </label>
+              <label class="field-label" for="missingValueMarkersInput">Missing value markers</label>
+              <input id="missingValueMarkersInput" class="input" type="text" value="(blank), NULL, n, N/A" />
+              <details id="importantMissingFieldsFolder" class="field-folder nested-field-folder">
+                <summary>Important fields required</summary>
+                <p id="importantMissingFieldsHint" class="quiet-line">If any selected important field is missing, that pair is skipped.</p>
+                <div id="importantMissingFieldList" class="network-field-list"></div>
+              </details>
+            </details>
+            <label class="check-line" hidden>
+              <input id="useSimilarityForceToggle" type="checkbox" checked />
+              <span id="useSimilarityForceLabel">Use similarity as layout force</span>
+            </label>
+            <details class="field-folder" hidden>
+              <summary id="attractionRulesTitle">Similarity attraction strength</summary>
+              <p id="attractionRulesHint" class="quiet-line">These values influence Spring Layout forces; they are not fixed geometric distances.</p>
+              <div id="centralityThresholdList" class="threshold-list"></div>
+              <button id="addCentralityThresholdBtn" class="button subtle full" type="button">Add rule</button>
+            </details>
+          </section>
+
+          <section class="panel analysis-panel">
+            <div class="section-title" id="analysisTypeTitle">Similarity Type</div>
+            <select id="analysisTypeSelect" class="input">
+              <option value="artifact">鍣ㄧ墿鐩镐技搴︾綉缁</option>
+              <option value="site">閬楀潃鐩镐技搴︾綉缁</option>
+            </select>
+            <div class="split-actions">
+              <button id="refreshConfigBtn" class="button subtle" type="button">Refresh Inventory</button>
+              <button id="applyConfigBtn" class="button primary" type="button" hidden>Apply Network Options</button>
+            </div>
+            <div id="siteAnalysisPanel" class="hidden">
+              <p class="quiet-line">鑺傜偣涓?Site / Location / 鑷€夊瓧娈靛€笺€傛寜鐩爣瀛楁鍋氬€肩粺璁＄煩闃碉紝鍐嶇敤 Jaccard 鎴?Cosine 姣旇緝鑺傜偣鐩镐技搴︺€</p>
+              <label class="field-label" for="siteNodeFieldSelect">鑺傜偣瀛楁</label>
+              <select id="siteNodeFieldSelect" class="input"></select>
+              <label class="field-label" for="siteTargetFieldSelect">鐩爣缁熻瀛楁</label>
+              <select id="siteTargetFieldSelect" class="input"></select>
+              <label class="field-label" for="siteMetricSelect">鐩镐技搴﹀嚱鏁</label>
+              <select id="siteMetricSelect" class="input">
+                <option value="jaccard">Jaccard</option>
+                <option value="cosine">Cosine</option>
+                <option value="brayCurtis">Bray-Curtis</option>
+              </select>
+            </div>
+          </section>
+
+          <section id="artifactAnalysisPanel" class="panel fields-weights-panel">
+            <details class="field-folder fields-folder" open>
+              <summary>Fields</summary>
+              <p class="quiet-line">Nodes are artifact items. Select custom fields or metadata to compare; selected field weights are normalized to 100%.</p>
+              <div class="field-toolbar">
+                <button id="fieldCheckedToggleBtn" class="icon-button" type="button" title="Show checked fields only" aria-label="Show checked fields only">✓</button>
+                <button id="fieldSortToggleBtn" class="icon-button" type="button" title="Sort fields ascending" aria-label="Sort fields ascending">A</button>
+              </div>
+              <label class="check-line">
+                <input id="edgeWeightingToggle" type="checkbox" checked />
+                <span id="edgeWeightingLabel">Use similarity as edge weight</span>
+              </label>
+              <div class="field-section-title" id="customFieldsTitle">Custom fields</div>
+              <div id="artifactFieldList" class="network-field-list weighted"></div>
+              <div class="field-section-title" id="metadataFieldsTitle">Metadata</div>
+              <p class="quiet-line metadata-fields-hint">Metadata is available for comparison when needed.</p>
+              <div id="systemFieldList" class="network-field-list weighted"></div>
+              <button id="refreshFieldPercentBtn" class="button subtle full" type="button" hidden>Refresh percentages</button>
+            </details>
+            <button id="showSimilarityMatrixBtn" class="button subtle" type="button">Similarity Matrix</button>
+          </section>
+
+          <section class="panel manual-edit-panel hidden">
+            <div class="section-title">鎵嬪姩缂栬緫</div>
+            <div class="mini-form">
+              <input id="newNodeId" class="input" type="text" placeholder="uniqueID" />
+              <input id="newNodeLabel" class="input" type="text" placeholder="鑺傜偣鍚嶇О" />
+              <button id="addNodeBtn" class="button subtle" type="button">娣诲姞鑺傜偣</button>
+            </div>
+            <div class="edge-mode-buttons">
+              <button id="undirectedEdgeBtn" class="segmented active" type="button">鏃犲悜</button>
+              <button id="directedEdgeBtn" class="segmented" type="button">鏈夊悜</button>
+              <button id="selfLoopBtn" class="segmented" type="button">鑷惊鐜</button>
+            </div>
+            <details class="field-folder">
+              <summary>Directed edges</summary>
+              <div class="mini-form">
+                <input id="newEdgeSource" class="input" type="text" placeholder="Source uniqueID" />
+                <input id="newEdgeTarget" class="input" type="text" placeholder="Target uniqueID" />
+                <button id="addEdgeBtn" class="button subtle" type="button">娣诲姞杈</button>
+              </div>
+            </details>
+          </section>
+        </aside>
+
+        <section class="graph-pane">
+          <div class="graph-toolbar">
+            <div>
+              <h2 id="graphTitle">缃戠粶鐢诲竷</h2>
+              <p id="graphSummary">0 涓妭鐐?路 0 鏉¤竟</p>
+              <div id="savedGraphLinkPanel" class="saved-graph-link hidden">
+                <input id="savedGraphLinkInput" class="input" type="text" readonly>
+                <a id="openSavedGraphLink" class="button subtle" href="#" target="_blank" rel="noreferrer">Open</a>
+              </div>
+            </div>
+            <div class="toolbar-controls">
+              <select id="layoutSelect" class="input compact-select">
+                <option value="spring">Spring</option>
+                <option value="similarity">Similarity</option>
+                <option value="circular">Circular</option>
+                <option value="hierarchical">Hierarchical</option>
+              </select>
+              <button id="buildArtifactNetworkBtn" class="button primary" type="button">Build Network</button>
+              <button id="fitGraphBtn" class="button subtle" type="button">閫傞厤</button>
+              <button id="vectorModeToggleBtn" class="button subtle graph-mode-toggle active" type="button">Vector</button>
+              <input id="vectorEdgesControl" type="checkbox" checked hidden />
+              <button id="layoutGraphBtn" class="button subtle" type="button">閲嶆柊甯冨眬</button>
+              <button id="toggleLabelsBtn" class="segmented active" type="button">鏍囩</button>
+            </div>
+          </div>
+          <div id="graphStage" class="graph-stage">
+            <div id="graphToolRail" class="graph-tool-rail" aria-label="Graph tools">
+              <button id="panToolBtn" class="tool-button active" type="button" title="Drag">☝</button>
+              <button id="rotateGraphBtn" class="tool-button" type="button" title="Rotate graph">⟳</button>
+              <button id="selectToolBtn" class="tool-button" type="button" title="Select">⌖</button>
+              <button id="boxSelectToolBtn" class="tool-button" type="button" title="Box select">□</button>
+              <button id="filterToolBtn" class="tool-button" type="button" title="Filter">⌕</button>
+            </div>
+            <svg id="graphSvg" class="graph-svg" role="img" aria-label="网络分析图"></svg>
+            <div id="graphSelectionBox" class="graph-selection-box hidden"></div>
+            <div id="graphEmpty" class="graph-empty">
+              <h3>从文物库生成网络</h3>
+              <p>鑺傜偣浼氫娇鐢?uniqueID 鍏宠仈鏂囩墿绠＄悊搴擄紱鐐瑰嚮鏂囩墿鑺傜偣鍙湪鍙充晶鏌ョ湅鏉＄洰璇︽儏銆</p>
+            </div>
+            <div id="nodeHoverCard" class="node-hover-card hidden"></div>
+          </div>
+          <div class="graph-style-toolbar">
+            <div class="style-subsection node-style-section">
+              <div class="style-subtitle">Nodes</div>
+              <label>Nodes <input id="showNodesControl" type="checkbox" checked /></label>
+              <label class="default-shape-control">褰㈢姸 <select id="nodeShapeControl"><option value="circle">鍦</option><option value="square">鏂</option><option value="diamond">鑿卞舰</option></select></label>
+              <label>鐐硅壊 <input id="nodeColorControl" type="color" value="#286f6c" /></label>
+              <label>Opacity <input id="nodeOpacityControl" class="input compact-number" type="number" min="0" max="1" step="0.05" value="1" /></label>
+              <label>鐐瑰ぇ灏?<input id="nodeSizeControl" class="input compact-number" type="number" min="4" max="48" step="1" value="10" /></label>
+              <label>Border Color <input id="nodeStrokeColorControl" type="color" value="#102326" /></label>
+              <label>Border Width <input id="nodeStrokeWidthControl" class="input compact-number" type="number" min="0" max="12" step="0.25" value="0" /></label>
+              <label>Border Opacity <input id="nodeStrokeOpacityControl" class="input compact-number" type="number" min="0" max="1" step="0.05" value="0" /></label>
+              <label>Labels <input id="showNodeLabelsControl" type="checkbox" checked /></label>
+              <label id="nodeLabelFieldRow">Label Field <select id="nodeLabelFieldSelect"></select></label>
+              <label>Text Color <input id="nodeLabelColorControl" type="color" value="#243438" /></label>
+              <label>Text Size <input id="nodeLabelSizeControl" class="input compact-number" type="number" min="8" max="36" step="1" value="11" list="labelSizePresets" /></label>
+            </div>
+            <div class="style-subsection edge-style-section">
+              <div class="style-subtitle">Edges</div>
+              <label>Edges <input id="showEdgesControl" type="checkbox" checked /></label>
+              <label>Edge style source
+                <select id="edgeStyleModeSelect" class="input compact-inline-select">
+                  <option value="threshold">Threshold</option>
+                  <option value="global">Global</option>
+                </select>
+              </label>
+              <label>杈硅壊 <input id="edgeColorControl" type="color" value="#7a8b91" /></label>
+              <label>Opacity <input id="edgeOpacityStyleControl" class="input compact-number" type="number" min="0" max="1" step="0.05" value="0.75" /></label>
+              <label>杈圭矖 <input id="edgeWidthControl" class="input compact-number" type="number" min="0.1" max="12" step="0.1" value="1" /></label>
+              <label>Labels <input id="showLabelsControl" type="checkbox" /></label>
+              <label id="edgeStyleLabelFieldRow">Label Field <select id="edgeStyleLabelFieldSelect"></select></label>
+              <label>Text Color <input id="edgeLabelColorControl" type="color" value="#243438" /></label>
+              <label>Text Size <input id="edgeLabelSizeControl" class="input compact-number" type="number" min="8" max="36" step="1" value="10" list="labelSizePresets" /></label>
+            </div>
+            <datalist id="labelSizePresets"><option value="10"></option><option value="12"></option><option value="14"></option><option value="16"></option><option value="18"></option><option value="24"></option></datalist>
+          </div>
+        </section>
+
+        <aside class="network-detail">
+          <button id="detailToggleBtn" class="icon-button detail-panel-toggle" type="button" title="Collapse Style Panel" aria-label="Collapse Style Panel">›</button>
+          <section class="panel visual-mapping-panel">
+            <details id="timeFilterPanel" class="time-filter-panel field-folder hidden" open>
+              <summary class="time-filter-summary"><span id="timeFilterTitle">Time range</span></summary>
+              <button id="resetTimeFilterBtn" class="button subtle full" type="button">Reset</button>
+              <div class="time-filter-inputs">
+                <label for="timeFilterMinInput"><span id="timeFilterMinLabel">Earliest</span><input id="timeFilterMinInput" class="input" type="number" step="1" /></label>
+                <label for="timeFilterMaxInput"><span id="timeFilterMaxLabel">Latest</span><input id="timeFilterMaxInput" class="input" type="number" step="1" /></label>
+              </div>
+              <div class="time-range-stack" aria-label="Time range sliders">
+                <input id="timeFilterMinRange" class="wide-range time-range time-range-min" type="range" step="1" />
+                <input id="timeFilterMaxRange" class="wide-range time-range time-range-max" type="range" step="1" />
+              </div>
+              <p id="timeFilterStatus" class="quiet-line">No parsed dates yet.</p>
+            </details>
+            <details class="field-folder visual-folder">
+              <summary id="nodeVisualSummary">Nodes</summary>
+              <div class="visual-map-grid">
+                <div class="visual-map-row"><label class="check-line"><input id="mapColorByField" type="checkbox" /><span id="mapColorLabel">Color by field</span></label><select id="nodeColorFieldSelect" class="input"></select></div>
+                <div class="visual-map-row"><label class="check-line"><input id="mapShapeByField" type="checkbox" /><span id="mapShapeLabel">Shape by field</span></label><select id="nodeShapeFieldSelect" class="input"></select></div>
+                <div class="visual-map-row"><label class="check-line"><input id="mapSizeByField" type="checkbox" /><span id="mapSizeLabel">Size by field</span></label><select id="nodeSizeFieldSelect" class="input"></select></div>
+                <div class="visual-map-row"><label class="check-line"><input id="mapOpacityByField" type="checkbox" /><span id="mapOpacityLabel">Opacity by field</span></label><select id="nodeOpacityFieldSelect" class="input"></select></div>
+              </div>
+              <div id="classificationLegend" class="classification-legend"></div>
+            </details>
+            <details class="field-folder visual-folder">
+              <summary id="edgeVisualSummary">Edges</summary>
+              <div class="visual-map-grid">
+                <div class="visual-map-row"><label class="check-line"><input id="mapEdgeColorByField" type="checkbox" /><span id="mapEdgeColorLabel">Color by edge value</span></label><select id="edgeColorFieldSelect" class="input"></select></div>
+                <div class="visual-map-row"><label class="check-line"><input id="mapEdgeOpacityByField" type="checkbox" /><span id="mapEdgeOpacityLabel">Opacity by edge value</span></label><select id="edgeOpacityFieldSelect" class="input"></select></div>
+                <div class="visual-map-row"><label class="check-line"><input id="mapEdgeLabelByField" type="checkbox" /><span id="mapEdgeLabelLabel">Label by edge value</span></label><select id="edgeLabelFieldSelect" class="input"></select></div>
+              </div>
+              <div id="edgeClassificationLegend" class="classification-legend"></div>
+            </details>
+          </section>
+
+          <section class="panel right-style-panel">
+            <div class="section-title" id="rightStyleTitle">Nodes and edges styling</div>
+            <label class="range-label" for="similarityThreshold" hidden>
+              <span>鐩镐技搴﹂槇鍊</span>
+              <strong id="thresholdValue">0.00</strong>
+            </label>
+            <input id="similarityThreshold" class="wide-range" type="range" min="0" max="1" step="0.05" value="0" hidden />
+            <div id="graphStyleDock"></div>
+          </section>
+
+          <section class="panel metrics-panel">
+            <div class="section-title">缃戠粶鎸囨爣</div>
+            <div class="metric-grid">
+              <div><span>鑺傜偣</span><strong id="metricNodes">0</strong></div>
+              <div><span>杈</span><strong id="metricEdges">0</strong></div>
+              <div><span>瀵嗗害</span><strong id="metricDensity">0</strong></div>
+              <div><span>杩為€氬垎閲</span><strong id="metricComponents">0</strong></div>
+            </div>
+            <details class="field-folder centrality-folder">
+              <summary id="centralitySummary">鑺傜偣鎺掕</summary>
+              <div class="centrality-config">
+                <label>Centrality
+                  <select id="centralitySelect" class="input">
+                    <option value="degree">Degree centrality</option>
+                    <option value="weighted">Weighted degree</option>
+                    <option value="closeness">Closeness centrality</option>
+                    <option value="betweenness">Betweenness centrality</option>
+                    <option value="eigenvector">Eigenvector centrality</option>
+                    <option value="pagerank">PageRank</option>
+                    <option value="harmonic">Harmonic centrality</option>
+                    <option value="clustering">Clustering coefficient</option>
+                    <option value="inDegree">In-degree centrality</option>
+                    <option value="outDegree">Out-degree centrality</option>
+                  </select>
+                </label>
+                <p id="metricsNotLayoutHint" class="quiet-line">Metrics are analytical overlays and do not control layout positions.</p>
+              </div>
+              <div id="centralityList" class="centrality-list"></div>
+            </details>
+          </section>
+
+          <section class="panel inspector-panel hidden">
+            <div class="section-title">妫€鏌ュ櫒</div>
+            <div id="inspectorEmpty" class="quiet-box">閫夋嫨涓€涓妭鐐规垨涓€鏉¤竟鏉ョ紪杈戙€</div>
+            <div id="nodeInspector" class="inspector-form hidden">
+              <label class="field-label" for="inspectNodeId">uniqueID</label>
+              <input id="inspectNodeId" class="input" type="text" readonly />
+              <label class="field-label" for="inspectNodeLabel">Label</label>
+              <input id="inspectNodeLabel" class="input" type="text" />
+              <label class="field-label" for="inspectNodeGroup">Group</label>
+              <input id="inspectNodeGroup" class="input" type="text" />
+              <label class="field-label" for="inspectNodeNotes">Notes</label>
+              <textarea id="inspectNodeNotes" class="metadata-textarea expanded"></textarea>
+              <div id="artifactPreview" class="artifact-preview hidden"></div>
+              <div class="split-actions">
+                <button id="openArtifactBtn" class="button primary" type="button">鎵撳紑鏂囩墿鏉＄洰</button>
+                <button id="deleteNodeBtn" class="button" type="button">鍒犻櫎鑺傜偣</button>
+              </div>
+            </div>
+            <div id="edgeInspector" class="inspector-form hidden">
+              <label class="field-label" for="inspectEdgeId">Edge ID</label>
+              <input id="inspectEdgeId" class="input" type="text" readonly />
+              <label class="field-label" for="inspectEdgeLabel">Label</label>
+              <input id="inspectEdgeLabel" class="input" type="text" />
+              <label class="field-label" for="inspectEdgeWeight">Weight</label>
+              <input id="inspectEdgeWeight" class="input" type="number" step="0.01" min="0" />
+              <label class="field-label" for="inspectEdgeNotes">Notes</label>
+              <textarea id="inspectEdgeNotes" class="metadata-textarea expanded"></textarea>
+              <button id="deleteEdgeBtn" class="button full" type="button">鍒犻櫎杈</button>
+            </div>
+          </section>
+
+          <section class="panel table-panel">
+            <details class="field-folder">
+              <summary id="nodesEdgesSummary">Nodes and Edges</summary>
+              <details class="field-folder edge-threshold-folder">
+                <summary id="edgeThresholdSummary">Edge threshold styles</summary>
+                <label class="field-label">Threshold value
+                  <select id="edgeThresholdFieldSelect" class="input compact-inline-select">
+                    <option value="similarity">Similarity</option>
+                    <option value="weightNormalized">Weight (normalized)</option>
+                    <option value="weightRaw">Weight (raw)</option>
+                    <option value="matchedCount">Matched fields</option>
+                  </select>
+                </label>
+                <div id="edgeThresholdStyleList" class="threshold-style-list"></div>
+                <button id="applyEdgeThresholdStyleBtn" class="button primary full" type="button">Apply threshold styles</button>
+                <button id="addEdgeThresholdStyleBtn" class="button subtle full" type="button" onclick="addEdgeThresholdStyle()">Add threshold style</button>
+              </details>
+              <div class="table-tabs">
+                <button id="nodeTableTab" class="segmented active" type="button">鑺傜偣</button>
+                <button id="edgeTableTab" class="segmented" type="button">杈</button>
+              </div>
+              <div id="nodeTable" class="network-table"></div>
+              <div id="edgeTable" class="network-table hidden"></div>
+            </details>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <div id="similarityMatrixDialog" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="similarityMatrixTitle">
+      <div class="modal-card matrix-modal-card">
+        <div class="section-title">
+          <span id="similarityMatrixTitle">Similarity Matrix</span>
+          <span class="matrix-window-actions">
+            <label class="matrix-font-control" for="matrixFontSizeRange">
+              <span>Size</span>
+              <input id="matrixFontSizeRange" type="range" min="9" max="22" step="1" value="12" />
+            </label>
+            <button id="exportMatrixCsvBtn" class="button subtle compact-action" type="button">CSV</button>
+          </span>
+          <button id="closeSimilarityMatrixBtn" class="icon-button" type="button" aria-label="Close">×</button>
+        </div>
+        <div id="similarityMatrixMeta" class="quiet-line"></div>
+        <div id="similarityMatrixTable" class="matrix-table-wrap"></div>
+      </div>
+    </div>
+
+    <div id="imageExportDialog" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="imageExportTitle">
+      <div class="modal-card export-modal-card">
+        <div class="section-title">
+          <span id="imageExportTitle">Export image</span>
+          <button id="closeImageExportBtn" class="icon-button" type="button" aria-label="Close">×</button>
+        </div>
+        <div class="export-form">
+          <label class="field-label" for="imageExportFormat">Format</label>
+          <select id="imageExportFormat" class="input">
+            <option value="png">PNG</option>
+            <option value="jpeg">JPG</option>
+            <option value="webp">WebP</option>
+            <option value="svg">SVG</option>
+          </select>
+          <label class="field-label" for="imageExportName">File name</label>
+          <input id="imageExportName" class="input" type="text" value="easy-network" />
+          <label class="field-label" for="imageExportScale">Scale</label>
+          <select id="imageExportScale" class="input">
+            <option value="1">1x</option>
+            <option value="2" selected>2x</option>
+            <option value="3">3x</option>
+          </select>
+          <p id="imageExportHint" class="quiet-line">Choose Save to select the folder and file name when supported by your browser.</p>
+          <div class="split-actions">
+            <button id="confirmImageExportBtn" class="button primary" type="button">Save</button>
+            <button id="cancelImageExportBtn" class="button subtle" type="button">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="network.js?v=20260607-label-titlecase"></script>
+  </body>
+</html>
+
+

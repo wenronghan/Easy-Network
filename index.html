@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Easy Network Inventory</title>
+    <link rel="stylesheet" href="styles.css?v=20260605-button-contrast" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">EN</div>
+          <div>
+            <h1>Easy Network</h1>
+          </div>
+        </div>
+        <div class="manager-overview" aria-label="管理器概览">
+          <button id="inventoryWorkspaceTab" class="manager-tab active" type="button">Inventory</button>
+          <button id="networkAnalysisLink" class="manager-tab" type="button">缃戠粶鍒嗘瀽</button>
+          <button id="shareStorageBtn" class="manager-tab compact" type="button">Share Inventory</button>
+          <button id="shareProjectBtn" class="manager-tab compact" type="button">Share Project</button>
+          <span id="projectSummary" class="manager-status" hidden>本地项目 · 0 个条目</span>
+        </div>
+        <div class="topbar-actions">
+          <button id="undoBtn" class="icon-button" type="button" title="撤销上一步" aria-label="撤销上一步">↶</button>
+          <button id="themeToggleBtn" class="icon-button active" type="button" title="切换主题" aria-label="切换主题">☀</button>
+          <button id="languageToggleBtn" class="switch-button" type="button" title="切换语言" aria-label="切换语言">
+            <span>中</span><span>EN</span>
+          </button>
+          <button id="newProjectBtn" class="button subtle" type="button" hidden>新建项目</button>
+          <label class="button primary" for="uploadCreateInput">上传图片建条目</label>
+          <input id="uploadCreateInput" class="visually-hidden" type="file" accept="image/*" multiple />
+          <button id="createEmptyBtn" class="button" type="button">新建条目</button>
+          <button id="openProjectBtn" class="button subtle" type="button" hidden>项目链接</button>
+        </div>
+      </header>
+
+      <main id="workspace" class="workspace">
+        <aside class="sidebar">
+          <section class="panel">
+            <div class="section-title">
+              <span>筛选</span>
+              <div class="panel-title-actions">
+                <button id="collapseSidebarBtn" class="icon-button" type="button" title="折叠筛选面板">‹</button>
+              </div>
+            </div>
+            <label class="field-label" for="searchInput">字段或内容</label>
+            <input id="searchInput" class="input" type="search" placeholder="输入 Title、Location、青铜..." />
+            <label class="field-label" for="fieldFilterSelect">字段</label>
+            <select id="fieldFilterSelect" class="input"></select>
+            <label class="field-label" for="valueFilterInput">字段值</label>
+            <input id="valueFilterInput" class="input" type="search" placeholder="按所选字段过滤" />
+          </section>
+
+          <section class="panel">
+            <div class="section-title">
+              <span>字段</span>
+              <button id="addFieldBtn" class="icon-button" type="button" title="新增字段">+</button>
+            </div>
+            <div id="fieldList" class="field-list"></div>
+          </section>
+
+          <section class="panel architecture-note">
+            <div class="section-title">线上版本预留</div>
+            <p>Project -> Artifact -> Images / Metadata</p>
+            <p>当前使用 IndexedDB；未来可替换为 PostgreSQL API 与对象存储。</p>
+          </section>
+        </aside>
+        <div id="sidebarResizer" class="sidebar-resizer" title="拖动改变筛选面板宽度"></div>
+        <button id="showSidebarBtn" class="show-sidebar-button hidden" type="button">筛选</button>
+
+        <section class="collection-pane">
+          <div class="collection-toolbar">
+            <div>
+              <h2>文物条目</h2>
+              <p id="selectionSummary">0 个条目</p>
+            </div>
+            <div class="toolbar-controls">
+              <select id="storageViewSelect" class="input compact-select" title="Storage view"></select>
+              <label id="libraryUploadBtn" class="button primary" for="uploadCreateInput">上传图片建条目</label>
+              <button id="libraryCreateEmptyBtn" class="button" type="button">新建条目</button>
+              <button id="sortToggleBtn" class="button subtle" type="button">排序</button>
+              <div class="view-toggle" role="group" aria-label="View mode">
+                <button id="gridViewBtn" class="segmented active" type="button">大图</button>
+                <button id="listViewBtn" class="segmented" type="button">列表</button>
+              </div>
+            </div>
+          </div>
+          <div id="sortPanel" class="sort-panel hidden">
+            <div id="sortRules" class="sort-rules"></div>
+            <button id="addSortRuleBtn" class="button subtle" type="button">添加排序层级</button>
+            <button id="clearSortBtn" class="button subtle" type="button">清空排序</button>
+          </div>
+          <div id="listControls" class="list-controls hidden">
+            <label>左右滑动 <input id="tableScrollSlider" type="range" min="0" max="100" value="0" /></label>
+            <label>表格大小 <input id="tableScaleSlider" type="range" min="30" max="260" value="100" /></label>
+          </div>
+          <div id="collectionSurface" class="collection-surface">
+            <div id="gridView" class="grid-view"></div>
+            <div id="listView" class="list-view hidden"></div>
+            <div id="selectionBox" class="selection-box hidden"></div>
+            <div id="emptyState" class="empty-state hidden">
+              <h3>还没有文物条目</h3>
+              <p>上传图片可以直接创建条目，也可以先新建条目。</p>
+            </div>
+          </div>
+        </section>
+
+        <div id="detailResizer" class="detail-resizer" title="拖动改变详情面板宽度"></div>
+        <aside id="detailPane" class="detail-pane">
+          <button id="detailCollapseBtn" class="detail-collapse" type="button" title="折叠详情面板">›</button>
+          <div id="detailEmpty" class="detail-empty">
+            <h2>选择一个条目</h2>
+            <p>右侧会显示图片、缩略图、元数据和自定义字段。</p>
+          </div>
+          <div id="detailContent" class="detail-content hidden">
+            <div class="detail-header">
+              <div>
+                <h2 id="detailTitle">Untitled</h2>
+                <p id="detailId"></p>
+              </div>
+              <button id="openDetailTabsBtn" class="button subtle" type="button">展开</button>
+            </div>
+
+            <div class="detail-editor-layout">
+              <div class="detail-media-column">
+                <div class="image-stage">
+                  <div id="imageViewport" class="image-viewport">
+                    <img id="mainImage" alt="文物图片" />
+                    <div id="noImageState" class="no-image">此条目还没有图片</div>
+                  </div>
+                  <div class="image-controls">
+                    <button id="panModeBtn" class="icon-button hand-button" type="button" title="抓手拖拽"></button>
+                    <label for="zoomSlider">缩放</label>
+                    <input id="zoomSlider" class="zoom-slider" type="range" min="1" max="4" step="0.05" value="1" />
+                    <button id="resetViewBtn" class="icon-button" type="button" title="重置视图">1:1</button>
+                    <button id="deleteImageBtn" class="icon-button delete-image-button" type="button" title="删除当前图片" aria-label="删除当前图片">⌫</button>
+                  </div>
+                </div>
+                <div id="thumbnailStrip" class="thumbnail-strip"></div>
+                <label class="button full" for="addImagesInput">向当前条目上传图片</label>
+                <input id="addImagesInput" class="visually-hidden" type="file" accept="image/*" multiple />
+              </div>
+
+              <div class="detail-fields-column">
+                <div id="metadataBlock" class="metadata-block">
+                  <div class="section-title">
+                    <span id="metadataTitle">元数据</span>
+                    <button id="metadataCollapseBtn" class="icon-button" type="button" title="折叠元数据" aria-label="折叠元数据">⌃</button>
+                  </div>
+                  <div id="metadataFields" class="metadata-fields"></div>
+                </div>
+
+                <div class="metadata-block">
+                  <div class="section-title">
+                    <span>自定义字段</span>
+                    <button id="addCustomFieldBtn" class="icon-button" type="button" title="新增自定义字段">+</button>
+                  </div>
+                  <div id="customFields" class="metadata-fields"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </main>
+
+      <section id="networkWorkspace" class="network-tab-panel hidden" aria-label="Network analysis workspace">
+        <iframe id="networkFrame" title="Network analysis" data-src="network.html?embedded=1&v=20260607-label-titlecase"></iframe>
+      </section>
+    </div>
+
+    <div id="columnMenu" class="context-menu hidden"></div>
+
+    <div id="summaryDialog" class="dialog-backdrop hidden" role="dialog" aria-modal="true">
+      <div class="dialog summary-dialog">
+        <div class="dialog-header">
+          <h2 id="summaryDialogTitle">条目汇总</h2>
+          <button id="closeSummaryDialogBtn" class="icon-button" type="button">x</button>
+        </div>
+        <div id="summaryContent" class="summary-content"></div>
+        <div class="dialog-actions">
+          <button id="summaryExportCsvBtn" class="button primary" type="button">导出 CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="projectDialog" class="dialog-backdrop hidden" role="dialog" aria-modal="true">
+      <div class="dialog">
+        <div class="dialog-header">
+          <h2>项目链接预览</h2>
+          <button id="closeProjectDialogBtn" class="icon-button" type="button">x</button>
+        </div>
+        <p>第一版不连接服务器，但项目模型已经预留分享链接和多人编辑入口。</p>
+        <a class="share-link" id="shareLink" href="#/share/share-local-archive"></a>
+      </div>
+    </div>
+
+    <div id="fieldDialog" class="dialog-backdrop hidden" role="dialog" aria-modal="true">
+      <div class="dialog">
+        <div class="dialog-header">
+          <h2>新增自定义字段</h2>
+          <button id="closeFieldDialogBtn" class="icon-button" type="button">x</button>
+        </div>
+        <label class="field-label" for="fieldNameInput">字段名称</label>
+        <input id="fieldNameInput" class="input" type="text" placeholder="例如 Condition、Excavation Unit" />
+        <label class="field-label" for="fieldScopeSelect">添加范围</label>
+        <select id="fieldScopeSelect" class="input">
+          <option value="all" selected>所有条目</option>
+          <option value="current">仅当前条目</option>
+          <option value="filtered">筛选某些条目</option>
+        </select>
+        <div id="fieldScopeFilter" class="scope-filter hidden">
+          <label class="field-label" for="scopeFieldSelect">筛选字段</label>
+          <select id="scopeFieldSelect" class="input"></select>
+          <label class="field-label" for="scopeValueInput">现存值或键入新值</label>
+          <input id="scopeValueInput" class="input" type="text" list="scopeValueOptions" placeholder="选择现存值或直接输入" />
+          <datalist id="scopeValueOptions"></datalist>
+        </div>
+        <div class="dialog-actions">
+          <button id="confirmFieldBtn" class="button primary" type="button">添加字段</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="expandedView" class="expanded-view hidden">
+      <div class="expanded-header">
+        <div>
+          <h2 id="expandedTitle">详情</h2>
+          <p id="expandedSubTitle"></p>
+        </div>
+        <div class="expanded-actions">
+          <button class="tab-button active" data-tab="image" type="button">Image</button>
+          <button class="tab-button" data-tab="metadata" type="button">Metadata</button>
+          <button class="tab-button" data-tab="fields" type="button">Fields</button>
+          <button id="closeExpandedBtn" class="button" type="button">关闭</button>
+        </div>
+      </div>
+      <div class="expanded-body">
+        <section id="expandedImageTab" class="expanded-tab">
+          <div class="expanded-image-layout">
+            <div id="expandedImageViewport" class="image-viewport large">
+              <img id="expandedImage" alt="文物大图" />
+              <div id="expandedNoImageState" class="no-image">此条目还没有图片</div>
+            </div>
+            <aside class="expanded-side-editor">
+              <div class="image-controls">
+                <button id="expandedPanModeBtn" class="icon-button hand-button" type="button" title="抓手拖拽"></button>
+                <label for="expandedZoomSlider">缩放</label>
+                <input id="expandedZoomSlider" class="zoom-slider" type="range" min="1" max="5" step="0.05" value="1" />
+                <button id="expandedResetViewBtn" class="icon-button" type="button">1:1</button>
+              </div>
+              <div class="image-adjustments">
+                <label>Brightness <input id="imageBrightnessControl" type="range" min="0.2" max="2" step="0.05" value="1" /></label>
+                <label>Contrast <input id="imageContrastControl" type="range" min="0.2" max="2" step="0.05" value="1" /></label>
+                <label>Saturation <input id="imageSaturationControl" type="range" min="0" max="2.5" step="0.05" value="1" /></label>
+                <label>Exposure <input id="imageExposureControl" type="range" min="0.2" max="2" step="0.05" value="1" /></label>
+                <button id="saveImageAdjustmentsBtn" class="button subtle" type="button">Save adjustments</button>
+              </div>
+              <div class="metadata-block">
+                <div class="section-title">Metadata</div>
+                <div id="expandedInlineMetadataFields" class="metadata-fields"></div>
+              </div>
+              <div class="metadata-block">
+                <div class="section-title">Fields <button id="expandedInlineAddFieldBtn" class="icon-button" type="button">+</button></div>
+                <div id="expandedInlineCustomFields" class="metadata-fields"></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+        <section id="expandedMetadataTab" class="expanded-tab hidden">
+          <div id="expandedMetadataFields" class="expanded-form"></div>
+        </section>
+        <section id="expandedFieldsTab" class="expanded-tab hidden">
+          <div class="expanded-field-actions">
+            <button id="expandedAddFieldBtn" class="button primary" type="button">新增字段</button>
+          </div>
+          <div id="expandedCustomFields" class="expanded-form"></div>
+        </section>
+      </div>
+    </div>
+
+    <script src="app.js?v=20260605-button-contrast"></script>
+  </body>
+</html>
