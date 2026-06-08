@@ -1,0 +1,61 @@
+﻿Record_ID,Site,Modern_Area,Historical_Region,Period,Date_Range,Context,Feature,Object_Type,Material,Source_Area
+T001,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Gold Cup,Gold,Sogdia
+T002,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Silver Bowl,Silver,Persia
+T003,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Coin,Copper,Chang'an
+T004,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Glass Vessel,Glass,Central Asia
+T005,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Gold Necklace,Gold,Sogdia
+T006,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Silver Plate,Silver,Persia
+T007,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Gold Bracelet,Gold,Sogdia
+T008,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Jade Pendant,Jade,Hetian
+T009,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Coin,Copper,Chang'an
+T010,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Glass Vessel,Glass,Central Asia
+T011,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Silver Bowl,Silver,Persia
+T012,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Gold Cup,Gold,Sogdia
+T013,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Incense Burner,Bronze,Chang'an
+T014,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Foreign Coin,Silver,Byzantium
+T015,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Crystal Cup,Crystal,Central Asia
+T016,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Silver Bowl,Silver,Persia
+T017,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Gold Cup,Gold,Sogdia
+T018,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Coin,Copper,Chang'an
+T019,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Glass Vessel,Glass,Central Asia
+T020,Hejiacun,Xi'an,Chang'an,High Tang,713-766 CE,Hoard,Storage Pit,Gold Bracelet,Gold,Sogdia
+T021,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Audience Hall,Ceramic Bowl,Ceramic,Chang'an
+T022,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Residential Area,Coin,Copper,Chang'an
+T023,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Audience Hall,Glass Vessel,Glass,Central Asia
+T024,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Storage Room,Silver Bowl,Silver,Persia
+T025,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Residential Area,Ceramic Bowl,Ceramic,Chang'an
+T026,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Audience Hall,Lacquer Box,Lacquer,Sichuan
+T027,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Audience Hall,Bronze Mirror,Bronze,Chang'an
+T028,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Storage Room,Silver Plate,Silver,Persia
+T029,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Garden,Coin,Copper,Chang'an
+T030,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Garden,Glass Vessel,Glass,Central Asia
+T031,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Residential Area,Ceramic Bowl,Ceramic,Chang'an
+T032,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Audience Hall,Incense Burner,Bronze,Chang'an
+T033,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Storage Room,Silver Bowl,Silver,Persia
+T034,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Garden,Jade Pendant,Jade,Hetian
+T035,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Audience Hall,Lacquer Box,Lacquer,Sichuan
+T036,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Residential Area,Coin,Copper,Chang'an
+T037,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Audience Hall,Ceramic Bowl,Ceramic,Chang'an
+T038,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Storage Room,Silver Plate,Silver,Persia
+T039,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Garden,Glass Vessel,Glass,Central Asia
+T040,Daming Palace,Xi'an,Chang'an,High Tang,713-766 CE,Palace,Audience Hall,Bronze Mirror,Bronze,Chang'an
+T041,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Pagoda Base,Bronze Mirror,Bronze,Chang'an
+T042,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Burial Chamber,Coin,Copper,Chang'an
+T043,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Pagoda Base,Glass Vessel,Glass,Central Asia
+T044,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Burial Chamber,Silver Bowl,Silver,Persia
+T045,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Pagoda Base,Bronze Mirror,Bronze,Chang'an
+T046,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Pagoda Base,Buddhist Statue,Bronze,Chang'an
+T047,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Burial Chamber,Ceramic Bowl,Ceramic,Chang'an
+T048,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Pagoda Base,Incense Burner,Bronze,Chang'an
+T049,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Burial Chamber,Coin,Copper,Chang'an
+T050,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Pagoda Base,Glass Vessel,Glass,Central Asia
+T051,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Pagoda Base,Buddhist Statue,Bronze,Chang'an
+T052,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Burial Chamber,Silver Bowl,Silver,Persia
+T053,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Pagoda Base,Sutra Container,Bronze,Chang'an
+T054,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Burial Chamber,Jade Pendant,Jade,Hetian
+T055,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Pagoda Base,Incense Burner,Bronze,Chang'an
+T056,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Burial Chamber,Ceramic Bowl,Ceramic,Chang'an
+T057,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Pagoda Base,Bronze Mirror,Bronze,Chang'an
+T058,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Burial Chamber,Coin,Copper,Chang'an
+T059,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Pagoda Base,Glass Vessel,Glass,Central Asia
+T060,Xingjiao Temple,Xi'an,Chang'an,Middle Tang,767-907 CE,Temple,Pagoda Base,Sutra Container,Bronze,Chang'an
