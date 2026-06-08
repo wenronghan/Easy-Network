@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Easy Network Analysis</title>
-    <link rel="stylesheet" href="styles.css?v=20260608-matrix-scrollbar" />
-    <link rel="stylesheet" href="network.css?v=20260608-matrix-scrollbar" />
+    <link rel="stylesheet" href="styles.css?v=20260608-shape-options" />
+    <link rel="stylesheet" href="network.css?v=20260608-shape-options" />
   </head>
   <body class="network-page">
     <div class="network-shell">
@@ -234,7 +234,7 @@
             <div class="style-subsection node-style-section">
               <div class="style-subtitle">Nodes</div>
               <label>Nodes <input id="showNodesControl" type="checkbox" checked /></label>
-              <label class="default-shape-control">褰㈢姸 <select id="nodeShapeControl"><option value="circle">鍦</option><option value="square">鏂</option><option value="diamond">鑿卞舰</option></select></label>
+              <label class="default-shape-control">Shape <select id="nodeShapeControl"><option value="circle">Circle</option><option value="square">Square</option><option value="diamond">Diamond</option><option value="triangle">Triangle</option><option value="triangle-down">Triangle Down</option><option value="pentagon">Pentagon</option><option value="hexagon">Hexagon</option><option value="octagon">Octagon</option><option value="star">Star</option><option value="plus">Plus</option><option value="cross">Cross</option><option value="x">X</option><option value="horizontal-bar">Horizontal Bar</option><option value="vertical-bar">Vertical Bar</option><option value="ellipse">Ellipse</option></select></label>
               <label>鐐硅壊 <input id="nodeColorControl" type="color" value="#286f6c" /></label>
               <label>Opacity <input id="nodeOpacityControl" class="input compact-number" type="number" min="0" max="1" step="0.05" value="1" /></label>
               <label>鐐瑰ぇ灏?<input id="nodeSizeControl" class="input compact-number" type="number" min="4" max="48" step="1" value="10" /></label>
@@ -458,7 +458,7 @@
       </div>
     </div>
 
-    <script src="network.js?v=20260608-matrix-scrollbar"></script>
+    <script src="network.js?v=20260608-shape-options"></script>
   </body>
 </html>
 

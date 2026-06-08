@@ -7,6 +7,24 @@ localStorage.setItem("easy-network-language", DEFAULT_LANGUAGE);
 const DEFAULT_STORAGE_NAME = "Local Archive";
 const LEGACY_DEFAULT_STORAGE_NAMES = new Set(["考古文物项目", "鑰冨彜鏂囩墿椤圭洰"]);
 const IS_EMBEDDED = new URLSearchParams(window.location.search).get("embedded") === "1";
+const NODE_SHAPES = [
+  { value: "circle", en: "Circle", zh: "圆形", symbol: "●" },
+  { value: "square", en: "Square", zh: "方形", symbol: "■" },
+  { value: "diamond", en: "Diamond", zh: "菱形", symbol: "◆" },
+  { value: "triangle", en: "Triangle", zh: "三角形", symbol: "▲" },
+  { value: "triangle-down", en: "Triangle Down", zh: "倒三角", symbol: "▼" },
+  { value: "pentagon", en: "Pentagon", zh: "五边形", symbol: "⬟" },
+  { value: "hexagon", en: "Hexagon", zh: "六边形", symbol: "⬢" },
+  { value: "octagon", en: "Octagon", zh: "八边形", symbol: "⬣" },
+  { value: "star", en: "Star", zh: "星形", symbol: "★" },
+  { value: "plus", en: "Plus", zh: "加号", symbol: "+" },
+  { value: "cross", en: "Cross", zh: "十字", symbol: "✚" },
+  { value: "x", en: "X", zh: "X 形", symbol: "×" },
+  { value: "horizontal-bar", en: "Horizontal Bar", zh: "横条", symbol: "▬" },
+  { value: "vertical-bar", en: "Vertical Bar", zh: "竖条", symbol: "▮" },
+  { value: "ellipse", en: "Ellipse", zh: "椭圆", symbol: "⬭" }
+];
+const NODE_SHAPE_VALUES = NODE_SHAPES.map((shape) => shape.value);
 
 if (IS_EMBEDDED) {
   document.body.classList.add("embedded-network");
@@ -1658,11 +1676,7 @@ function sanitizeNetworkLanguage() {
     : "Spring：拓扑力导向布局，边权增强吸引力。Similarity：把节点放到相似度空间。Circular：用于总览，不由相似度决定坐标。Hierarchical：按年代或类别组织节点。";
   if (dom.layoutModeSelect) dom.layoutModeSelect.title = layoutHelp;
   if (dom.layoutSelect) dom.layoutSelect.title = layoutHelp;
-  if (dom.nodeShapeControl) {
-    dom.nodeShapeControl.options[0].textContent = isEn ? "Circle" : "圆";
-    dom.nodeShapeControl.options[1].textContent = isEn ? "Square" : "方";
-    dom.nodeShapeControl.options[2].textContent = isEn ? "Diamond" : "菱形";
-  }
+  populateNodeShapeSelect(dom.nodeShapeControl, state.style.nodeShape);
   setToolButtonText(dom.panToolBtn, isEn ? "Drag" : "拖动");
   setToolButtonText(dom.rotateGraphBtn, isEn ? "Rotate" : "旋转");
   setToolButtonText(dom.selectToolBtn, isEn ? "Select" : "选择");
@@ -1683,6 +1697,19 @@ function setLabelText(label, text) {
 
 function setToolbarLabelText(index, text) {
   setLabelText(document.querySelectorAll(".graph-style-toolbar > .style-subsection > label")[index], text);
+}
+
+function getNodeShapeLabel(value) {
+  const shape = NODE_SHAPES.find((item) => item.value === value) || NODE_SHAPES[0];
+  return state.language === "en" ? shape.en : shape.zh;
+}
+
+function populateNodeShapeSelect(select, selectedValue = "circle") {
+  if (!select) return;
+  const current = NODE_SHAPE_VALUES.includes(selectedValue) ? selectedValue : "circle";
+  select.innerHTML = "";
+  NODE_SHAPES.forEach((shape) => select.append(new Option(getNodeShapeLabel(shape.value), shape.value)));
+  select.value = current;
 }
 
 function setToolButtonText(button, text) {
@@ -3514,8 +3541,7 @@ function renderClassificationLegend() {
       }
       if (enLabel === "Shape") {
         const shape = document.createElement("select");
-        ["circle", "square", "diamond"].forEach((item) => shape.append(new Option(item, item)));
-        shape.value = state.visualEncoding.nodeShapeOverrides?.[field.id]?.[value] || shapeForCategoryValue(value, field);
+        populateNodeShapeSelect(shape, state.visualEncoding.nodeShapeOverrides?.[field.id]?.[value] || shapeForCategoryValue(value, field));
         shape.addEventListener("change", () => {
           state.visualEncoding.nodeShapeOverrides[field.id] ||= {};
           state.visualEncoding.nodeShapeOverrides[field.id][value] = shape.value;
@@ -4428,11 +4454,74 @@ function createNodeShape(radius, fill, shape = state.style.nodeShape, opacity = 
     "stroke-width": Math.max(0, Number(strokeWidth || 0)),
     "stroke-opacity": clamp(Number(strokeOpacity || 0), 0, 1)
   };
+  const polygon = (points) => createSvg("polygon", { points, fill, opacity, ...strokeAttrs });
+  const regularPolygon = (sides, rotation = -Math.PI / 2) => {
+    const points = Array.from({ length: sides }, (_, index) => {
+      const angle = rotation + (Math.PI * 2 * index) / sides;
+      return `${round(Math.cos(angle) * radius, 3)},${round(Math.sin(angle) * radius, 3)}`;
+    }).join(" ");
+    return polygon(points);
+  };
+  const starPoints = () => Array.from({ length: 10 }, (_, index) => {
+    const angle = -Math.PI / 2 + (Math.PI * 2 * index) / 10;
+    const pointRadius = index % 2 === 0 ? radius : radius * 0.45;
+    return `${round(Math.cos(angle) * pointRadius, 3)},${round(Math.sin(angle) * pointRadius, 3)}`;
+  }).join(" ");
   if (shape === "square") {
     return createSvg("rect", { x: -radius, y: -radius, width: radius * 2, height: radius * 2, fill, opacity, ...strokeAttrs });
   }
   if (shape === "diamond") {
-    return createSvg("polygon", { points: `0,${-radius} ${radius},0 0,${radius} ${-radius},0`, fill, opacity, ...strokeAttrs });
+    return polygon(`0,${-radius} ${radius},0 0,${radius} ${-radius},0`);
+  }
+  if (shape === "triangle") {
+    return regularPolygon(3);
+  }
+  if (shape === "triangle-down") {
+    return regularPolygon(3, Math.PI / 2);
+  }
+  if (shape === "pentagon") {
+    return regularPolygon(5);
+  }
+  if (shape === "hexagon") {
+    return regularPolygon(6, Math.PI / 6);
+  }
+  if (shape === "octagon") {
+    return regularPolygon(8, Math.PI / 8);
+  }
+  if (shape === "star") {
+    return polygon(starPoints());
+  }
+  if (shape === "plus" || shape === "cross") {
+    const arm = radius * 0.38;
+    const length = radius;
+    return createSvg("path", {
+      d: `M ${-arm} ${-length} L ${arm} ${-length} L ${arm} ${-arm} L ${length} ${-arm} L ${length} ${arm} L ${arm} ${arm} L ${arm} ${length} L ${-arm} ${length} L ${-arm} ${arm} L ${-length} ${arm} L ${-length} ${-arm} L ${-arm} ${-arm} Z`,
+      fill,
+      opacity,
+      transform: shape === "cross" ? "rotate(45)" : "",
+      ...strokeAttrs
+    });
+  }
+  if (shape === "x") {
+    const length = radius;
+    return createSvg("path", {
+      d: `M ${-length} ${-length} L ${length} ${length} M ${length} ${-length} L ${-length} ${length}`,
+      fill: "none",
+      stroke: fill,
+      "stroke-width": Math.max(1.5, radius * 0.42),
+      "stroke-linecap": "round",
+      opacity,
+      "stroke-opacity": opacity
+    });
+  }
+  if (shape === "horizontal-bar") {
+    return createSvg("rect", { x: -radius * 1.35, y: -radius * 0.35, width: radius * 2.7, height: radius * 0.7, fill, opacity, ...strokeAttrs });
+  }
+  if (shape === "vertical-bar") {
+    return createSvg("rect", { x: -radius * 0.35, y: -radius * 1.35, width: radius * 0.7, height: radius * 2.7, fill, opacity, ...strokeAttrs });
+  }
+  if (shape === "ellipse") {
+    return createSvg("ellipse", { rx: radius * 1.35, ry: radius * 0.78, fill, opacity, ...strokeAttrs });
   }
   return createSvg("circle", { r: radius, fill, opacity, ...strokeAttrs });
 }
@@ -5681,11 +5770,11 @@ function colorForCategoryValue(value) {
 
 function shapeForCategoryValue(value, field = null) {
   const index = field ? categoryIndexForField(value, field) : categoryIndex(value);
-  return ["circle", "square", "diamond"][index % 3];
+  return NODE_SHAPE_VALUES[index % NODE_SHAPE_VALUES.length];
 }
 
 function shapeSymbolForIndex(index) {
-  return ["●", "■", "◆"][index % 3];
+  return NODE_SHAPES[index % NODE_SHAPES.length].symbol;
 }
 
 function colorFromValue(value) {

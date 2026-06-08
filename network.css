@@ -981,13 +981,17 @@ body[data-theme="dark"] .graph-stage {
 
 .graph-node circle,
 .graph-node rect,
-.graph-node polygon {
+.graph-node polygon,
+.graph-node path,
+.graph-node ellipse {
   vector-effect: non-scaling-stroke;
 }
 
 .graph-node.selected circle,
 .graph-node.selected rect,
-.graph-node.selected polygon {
+.graph-node.selected polygon,
+.graph-node.selected path,
+.graph-node.selected ellipse {
   stroke: var(--accent);
   stroke-width: 1.4;
   stroke-opacity: 1;
