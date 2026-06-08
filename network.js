@@ -132,6 +132,7 @@ const dom = {
   matrixFontDownBtn: document.querySelector("#matrixFontDownBtn"),
   matrixFontUpBtn: document.querySelector("#matrixFontUpBtn"),
   matrixFontSizeRange: document.querySelector("#matrixFontSizeRange"),
+  matrixHeaderFieldSelect: document.querySelector("#matrixHeaderFieldSelect"),
   exportMatrixCsvBtn: document.querySelector("#exportMatrixCsvBtn"),
   similarityMatrixTitle: document.querySelector("#similarityMatrixTitle"),
   similarityMatrixMeta: document.querySelector("#similarityMatrixMeta"),
@@ -358,7 +359,8 @@ const state = {
   matrixUi: {
     x: null,
     y: null,
-    fontSize: 12
+    fontSize: 12,
+    headerFieldId: "label"
   }
 };
 
@@ -959,7 +961,8 @@ function loadNetworkSettings() {
       ...state.matrixUi,
       x: Number.isFinite(Number(saved.matrixUi.x)) ? Number(saved.matrixUi.x) : null,
       y: Number.isFinite(Number(saved.matrixUi.y)) ? Number(saved.matrixUi.y) : null,
-      fontSize: Number.isFinite(Number(saved.matrixUi.fontSize)) ? clamp(Number(saved.matrixUi.fontSize), 9, 22) : state.matrixUi.fontSize
+      fontSize: Number.isFinite(Number(saved.matrixUi.fontSize)) ? clamp(Number(saved.matrixUi.fontSize), 9, 22) : state.matrixUi.fontSize,
+      headerFieldId: saved.matrixUi.headerFieldId || state.matrixUi.headerFieldId
     };
   }
   state.layoutMode = ["spring", "similarity", "circular", "hierarchical"].includes(saved.layoutMode) ? saved.layoutMode : state.layoutMode;
@@ -1265,6 +1268,13 @@ function bindEvents() {
   dom.matrixFontSizeRange?.addEventListener("input", () => setMatrixFontSize(Number(dom.matrixFontSizeRange.value)));
   dom.matrixFontSizeRange?.addEventListener("pointerdown", (event) => event.stopPropagation());
   dom.matrixFontSizeRange?.addEventListener("click", (event) => event.stopPropagation());
+  dom.matrixHeaderFieldSelect?.addEventListener("change", () => {
+    state.matrixUi.headerFieldId = dom.matrixHeaderFieldSelect.value || "label";
+    if (state.lastMatrix) renderMatrixTable(state.lastMatrix);
+    saveNetworkSettings();
+  });
+  dom.matrixHeaderFieldSelect?.addEventListener("pointerdown", (event) => event.stopPropagation());
+  dom.matrixHeaderFieldSelect?.addEventListener("click", (event) => event.stopPropagation());
   dom.exportMatrixCsvBtn?.addEventListener("click", exportSimilarityMatrixCsv);
   dom.applyEdgeThresholdStyleBtn?.addEventListener("click", applyEdgeThresholdStyles);
   dom.closeSimilarityMatrixBtn?.addEventListener("click", hideSimilarityMatrix);
@@ -1590,6 +1600,7 @@ function sanitizeNetworkLanguage() {
   if (dom.showSimilarityMatrixBtn) dom.showSimilarityMatrixBtn.textContent = text.similarityMatrix;
   if (dom.similarityMatrixTitle) dom.similarityMatrixTitle.textContent = text.similarityMatrix;
   setText(".matrix-font-control span", isEn ? "Size" : "大小");
+  setText(".matrix-header-control span", isEn ? "Headers" : "表头");
   setText("#rightStyleTitle", text.rightStyle);
   const stylePanel = document.querySelector(".right-style-panel");
   const styleTitle = document.querySelector("#rightStyleTitle");
@@ -2528,6 +2539,7 @@ function renderMatrixTable({ rows, columns, matrix, meta }) {
   if (!dom.similarityMatrixDialog || !dom.similarityMatrixTable) return;
   state.lastMatrix = { rows, columns, matrix, meta };
   dom.similarityMatrixMeta.textContent = meta;
+  renderMatrixHeaderFieldSelect(rows, columns);
   const card = dom.similarityMatrixDialog.querySelector(".matrix-modal-card");
   card?.style.setProperty("--matrix-font-size", `${state.matrixUi.fontSize}px`);
   const table = document.createElement("table");
@@ -2537,8 +2549,9 @@ function renderMatrixTable({ rows, columns, matrix, meta }) {
   headRow.append(document.createElement("th"));
   columns.forEach((column) => {
     const th = document.createElement("th");
-    th.textContent = column.label;
-    th.title = column.id;
+    const header = getMatrixHeaderLabel(column);
+    th.textContent = header.label;
+    th.title = header.title || column.id;
     headRow.append(th);
   });
   thead.append(headRow);
@@ -2546,8 +2559,9 @@ function renderMatrixTable({ rows, columns, matrix, meta }) {
   rows.forEach((row, rowIndex) => {
     const tr = document.createElement("tr");
     const th = document.createElement("th");
-    th.textContent = row.label;
-    th.title = row.id;
+    const header = getMatrixHeaderLabel(row);
+    th.textContent = header.label;
+    th.title = header.title || row.id;
     tr.append(th);
     columns.forEach((_, colIndex) => {
       const cell = matrix[rowIndex][colIndex];
@@ -2564,6 +2578,50 @@ function renderMatrixTable({ rows, columns, matrix, meta }) {
   dom.similarityMatrixTable.innerHTML = "";
   dom.similarityMatrixTable.append(table);
   dom.similarityMatrixDialog.classList.remove("hidden");
+}
+
+function renderMatrixHeaderFieldSelect(rows = [], columns = []) {
+  if (!dom.matrixHeaderFieldSelect) return;
+  const current = state.matrixUi.headerFieldId || "label";
+  const options = matrixHeaderFieldOptions(rows, columns);
+  dom.matrixHeaderFieldSelect.innerHTML = "";
+  options.forEach((option) => dom.matrixHeaderFieldSelect.append(new Option(option.label, option.value)));
+  const values = new Set(options.map((option) => option.value));
+  if (!values.has(current)) state.matrixUi.headerFieldId = "label";
+  dom.matrixHeaderFieldSelect.value = state.matrixUi.headerFieldId;
+}
+
+function matrixHeaderFieldOptions(rows = [], columns = []) {
+  const records = [...rows, ...columns];
+  const hasArtifact = records.some((record) => record?.artifact);
+  const options = [
+    { value: "label", label: state.language === "en" ? "Label" : "标签" },
+    { value: "id", label: "ID" }
+  ];
+  if (!hasArtifact) return options;
+  const fieldOptions = state.fields
+    .filter((field) => {
+      if (!field) return false;
+      if (field.isSystemField) return field.label !== "ID";
+      return records.some((record) => Object.prototype.hasOwnProperty.call(record.artifact?.customFields || {}, field.id));
+    })
+    .map((field) => ({ value: `field:${field.id}`, label: field.label }));
+  return [...options, ...fieldOptions];
+}
+
+function getMatrixHeaderLabel(record) {
+  const fieldId = state.matrixUi.headerFieldId || "label";
+  if (fieldId === "id") return { label: record.id || record.label || "", title: record.label || record.id || "" };
+  if (fieldId === "label") return { label: record.label || record.id || "", title: record.id || record.label || "" };
+  if (fieldId.startsWith("field:") && record.artifact) {
+    const field = state.fields.find((item) => item.id === fieldId.slice("field:".length));
+    const value = field ? cleanCell(getFieldValue(record.artifact, field)) : "";
+    return {
+      label: value || record.label || record.id || "",
+      title: value ? `${field.label}: ${value}` : (record.id || record.label || "")
+    };
+  }
+  return { label: record.label || record.id || "", title: record.id || record.label || "" };
 }
 
 function hideSimilarityMatrix() {
@@ -2589,14 +2647,14 @@ async function exportSimilarityMatrixCsv() {
     return;
   }
   const lines = [
-    ["", ...matrix.columns.map((column) => column.label || column.id)].map(escapeCsvCell).join(",")
+    ["", ...matrix.columns.map((column) => getMatrixHeaderLabel(column).label || column.label || column.id)].map(escapeCsvCell).join(",")
   ];
   matrix.rows.forEach((row, rowIndex) => {
     const cells = matrix.columns.map((_, colIndex) => {
       const cell = matrix.matrix[rowIndex]?.[colIndex] || {};
       return cell.display ?? round(clamp(Number(cell.score || 0), 0, 1), 3);
     });
-    lines.push([row.label || row.id, ...cells].map(escapeCsvCell).join(","));
+    lines.push([getMatrixHeaderLabel(row).label || row.label || row.id, ...cells].map(escapeCsvCell).join(","));
   });
   const method = await saveTextFile("similarity-matrix.csv", lines.join("\n"), "text/csv;charset=utf-8");
   if (method === "clipboard-download" && dom.similarityMatrixMeta) {

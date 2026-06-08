@@ -1541,7 +1541,8 @@ body[data-theme="dark"] .graph-stage {
   cursor: default;
 }
 
-.matrix-font-control {
+.matrix-font-control,
+.matrix-header-control {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1552,6 +1553,11 @@ body[data-theme="dark"] .graph-stage {
 
 .matrix-font-control input {
   width: 110px;
+}
+
+.matrix-header-control select {
+  width: min(180px, 22vw);
+  min-width: 128px;
 }
 
 .compact-action {

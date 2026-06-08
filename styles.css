@@ -897,6 +897,22 @@ body[data-workspace="network"] #openProjectBtn {
   border-bottom: 0;
 }
 
+.sticky-table-scrollbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 12;
+  height: 18px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: -18px 14px 0;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.sticky-table-scrollbar > div {
+  height: 1px;
+}
+
 .storage-table-heading {
   display: flex;
   align-items: center;

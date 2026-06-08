@@ -75,6 +75,8 @@ const dom = {
   listControls: document.querySelector("#listControls"),
   tableScrollSlider: document.querySelector("#tableScrollSlider"),
   tableScaleSlider: document.querySelector("#tableScaleSlider"),
+  stickyTableScrollbar: document.querySelector("#stickyTableScrollbar"),
+  stickyTableScrollbarTrack: document.querySelector("#stickyTableScrollbarTrack"),
   csvImportInput: document.querySelector("#csvImportInput"),
   csvImportFab: document.querySelector("#csvImportFab"),
   selectionSummary: document.querySelector("#selectionSummary"),
@@ -1170,9 +1172,11 @@ function bindEvents() {
     renderDetail();
   });
   dom.tableScrollSlider.addEventListener("input", syncTableScrollFromSlider);
+  dom.stickyTableScrollbar?.addEventListener("scroll", syncTableScrollFromStickyBar);
   dom.tableScaleSlider.addEventListener("input", () => {
     state.tableScale = Number(dom.tableScaleSlider.value) / 100;
     dom.listView.style.setProperty("--table-scale", state.tableScale);
+    requestAnimationFrame(syncTableScrollSlider);
   });
   dom.collapseSidebarBtn.addEventListener("click", toggleSidebarPanel);
   dom.hideSidebarBtn?.addEventListener("click", hideSidebarPanel);
@@ -1877,11 +1881,28 @@ function toggleHeaderSort(fieldId) {
 function syncTableScrollFromSlider() {
   const max = dom.collectionSurface.scrollWidth - dom.collectionSurface.clientWidth;
   dom.collectionSurface.scrollLeft = max * (Number(dom.tableScrollSlider.value) / 100);
+  syncTableScrollSlider();
 }
 
 function syncTableScrollSlider() {
   const max = dom.collectionSurface.scrollWidth - dom.collectionSurface.clientWidth;
   dom.tableScrollSlider.value = max > 0 ? String(Math.round((dom.collectionSurface.scrollLeft / max) * 100)) : "0";
+  if (dom.stickyTableScrollbar && dom.stickyTableScrollbarTrack) {
+    const isList = state.viewMode === "list";
+    dom.stickyTableScrollbar.classList.toggle("hidden", !isList || max <= 0);
+    dom.stickyTableScrollbarTrack.style.width = `${Math.max(dom.collectionSurface.scrollWidth, dom.collectionSurface.clientWidth)}px`;
+    if (Math.abs(dom.stickyTableScrollbar.scrollLeft - dom.collectionSurface.scrollLeft) > 1) {
+      dom.stickyTableScrollbar.scrollLeft = dom.collectionSurface.scrollLeft;
+    }
+  }
+}
+
+function syncTableScrollFromStickyBar() {
+  if (!dom.stickyTableScrollbar || state.viewMode !== "list") return;
+  if (Math.abs(dom.collectionSurface.scrollLeft - dom.stickyTableScrollbar.scrollLeft) > 1) {
+    dom.collectionSurface.scrollLeft = dom.stickyTableScrollbar.scrollLeft;
+  }
+  syncTableScrollSlider();
 }
 
 function renderFilters() {

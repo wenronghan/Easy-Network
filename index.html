@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Easy Network Inventory</title>
-    <link rel="stylesheet" href="styles.css?v=20260605-button-contrast" />
+    <link rel="stylesheet" href="styles.css?v=20260608-matrix-scrollbar" />
   </head>
   <body>
     <div class="app-shell">
@@ -105,6 +105,9 @@
               <p>上传图片可以直接创建条目，也可以先新建条目。</p>
             </div>
           </div>
+          <div id="stickyTableScrollbar" class="sticky-table-scrollbar hidden" aria-label="Table horizontal scroll">
+            <div id="stickyTableScrollbarTrack"></div>
+          </div>
         </section>
 
         <div id="detailResizer" class="detail-resizer" title="拖动改变详情面板宽度"></div>
@@ -166,7 +169,7 @@
       </main>
 
       <section id="networkWorkspace" class="network-tab-panel hidden" aria-label="Network analysis workspace">
-        <iframe id="networkFrame" title="Network analysis" data-src="network.html?embedded=1&v=20260607-label-titlecase"></iframe>
+        <iframe id="networkFrame" title="Network analysis" data-src="network.html?embedded=1&v=20260608-matrix-scrollbar"></iframe>
       </section>
     </div>
 
