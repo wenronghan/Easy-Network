@@ -2,6 +2,28 @@
 
 Easy Network is a static, browser-based inventory and network analysis tool. It keeps local editable projects in IndexedDB and can also export projects as portable ZIP packages or read-only published snapshots for GitHub Pages.
 
+## Guide and Read-Only Example
+
+For a short explanation of Easy Network and its intended use, see:
+
+```text
+docs/Easy Network.pdf
+```
+
+GitHub Pages PDF link:
+
+```text
+https://wenronghan.github.io/Easy-Network/docs/Easy%20Network.pdf
+```
+
+Read-only example inventory:
+
+```text
+https://wenronghan.github.io/Easy-Network/#/cloud/lute-iconography
+```
+
+This link opens the published `Lute Iconography` snapshot for browsing, sharing, and copying into a local editable library. It is not the browser's local editable IndexedDB library itself.
+
 ## Local Projects
 
 Open the app normally, for example:
