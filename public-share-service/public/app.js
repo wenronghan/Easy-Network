@@ -887,6 +887,7 @@ async function boot() {
   applyLanguage();
   await applyRoute();
   render();
+  markAppReady();
 }
 
 async function refreshState() {
@@ -1164,6 +1165,10 @@ function applyLanguage() {
 function setText(selector, text) {
   const element = document.querySelector(selector);
   if (element) element.textContent = text;
+}
+
+function markAppReady() {
+  document.documentElement.classList.remove("app-loading");
 }
 
 function updateDocumentTitle() {
@@ -5852,5 +5857,6 @@ async function createEditableShareLink(scope) {
 
 boot().catch((error) => {
   console.error(error);
-  window.alert(`应用启动失败：${error.message}`);
+  markAppReady();
+  window.alert(`Application failed to start: ${error.message}`);
 });
