@@ -1166,6 +1166,10 @@ function setText(selector, text) {
   if (element) element.textContent = text;
 }
 
+function updateDocumentTitle() {
+  document.title = state.workspaceMode === "network" ? "Easy Network Analysis" : "Easy Network";
+}
+
 function showWorkspaceMode(mode, updateHash = true) {
   state.workspaceMode = mode === "network" ? "network" : "inventory";
   const isNetwork = state.workspaceMode === "network";
@@ -1174,6 +1178,7 @@ function showWorkspaceMode(mode, updateHash = true) {
   dom.inventoryWorkspaceTab?.classList.toggle("active", !isNetwork);
   dom.networkAnalysisLink?.classList.toggle("active", isNetwork);
   document.body.dataset.workspace = state.workspaceMode;
+  updateDocumentTitle();
 
   if (isNetwork && dom.networkFrame) {
     const desiredSrc = getNetworkFrameSrc();
