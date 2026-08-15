@@ -1167,7 +1167,7 @@ function setText(selector, text) {
 }
 
 function updateDocumentTitle() {
-  document.title = state.workspaceMode === "network" ? "Easy Network Analysis" : "Easy Network";
+  document.title = "Easy Network";
 }
 
 function showWorkspaceMode(mode, updateHash = true) {
