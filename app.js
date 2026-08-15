@@ -7,6 +7,7 @@ const PROJECT_MODE_CLOUD = "cloud";
 const PUBLIC_BASE_URL_STORAGE_KEY = "easy-network-public-base-url";
 const SHARE_SERVICE_URL_STORAGE_KEY = "easy-network-share-service-url";
 const PUBLISH_SCOPE_STORAGE_KEY = "easy-network-publish-scope";
+const PROTECTED_PUBLISH_SLUGS_STORAGE_KEY = "easy-network-protected-publish-slugs-v1";
 const DEFAULT_PUBLIC_BASE_URL = "https://wenronghan.github.io/Easy-Network/";
 const DEFAULT_SHARE_SERVICE_URL = "https://easy-network-share.wenronghan7.chatgpt.site";
 const PUBLISH_SCOPE_INVENTORY = "inventory";
@@ -4512,12 +4513,40 @@ function getPublishSlug(scope = state.publishScope, storageName = "") {
   return slugifyProjectName(state.publishedSlug || getPublishTitle(scope, storageName));
 }
 
+function readProtectedPublishSlugs() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PROTECTED_PUBLISH_SLUGS_STORAGE_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function rememberProtectedPublishSlug(storageName, slug) {
+  const cleanStorageName = normalizeStorageName(storageName);
+  const cleanSlug = slugifyProjectName(slug);
+  if (!cleanStorageName || !cleanSlug) return;
+  const protectedSlugs = readProtectedPublishSlugs();
+  protectedSlugs[cleanStorageName] = cleanSlug;
+  localStorage.setItem(PROTECTED_PUBLISH_SLUGS_STORAGE_KEY, JSON.stringify(protectedSlugs));
+}
+
+function getProtectedPublishSlug(storageName) {
+  const cleanStorageName = normalizeStorageName(storageName);
+  const protectedSlugs = readProtectedPublishSlugs();
+  return slugifyProjectName(protectedSlugs[cleanStorageName] || "");
+}
+
 function getPublishSlugForAccess(scope = state.publishScope, storageName = "", accessMode = SHARE_ACCESS_READ_ONLY) {
   const baseSlug = getPublishSlug(scope, storageName);
   const canPublishBackToCloud = state.projectMode === PROJECT_MODE_CLOUD
     && getPublishedAccessMode() === SHARE_ACCESS_EDITABLE
     && accessMode === SHARE_ACCESS_EDITABLE;
   if (state.projectMode === PROJECT_MODE_CLOUD && !canPublishBackToCloud) {
+    return slugifyProjectName(`${baseSlug}-copy-${Date.now().toString(36)}`);
+  }
+  const targetStorageName = getPublishStorageName(scope, storageName);
+  if (state.projectMode === PROJECT_MODE_LOCAL && scope !== PUBLISH_SCOPE_PROJECT && getProtectedPublishSlug(targetStorageName) === baseSlug) {
     return slugifyProjectName(`${baseSlug}-copy-${Date.now().toString(36)}`);
   }
   return baseSlug;
@@ -5000,6 +5029,8 @@ function openExportDialog() {
     inventorySelect.hidden = !isInventory;
     if (!linkInput.value && state.projectMode === PROJECT_MODE_CLOUD && getPublishedAccessMode() !== SHARE_ACCESS_EDITABLE) {
       feedback.textContent = "This source link is read-only. Creating another cloud link will make a protected copy instead of overwriting it.";
+    } else if (!linkInput.value && options.scope !== PUBLISH_SCOPE_PROJECT && getProtectedPublishSlug(options.storageName)) {
+      feedback.textContent = "This inventory was imported from a read-only snapshot. Creating a link will publish a protected copy instead of overwriting the source.";
     }
     if (!linkInput.value) {
       linkLabel.hidden = true;
@@ -5573,6 +5604,9 @@ async function copyProjectManifestToLibrary(manifest) {
     };
   });
   await store.importProjectRecords({ fields, artifacts, images });
+  if (manifest.slug && getPublishedAccessMode(manifest) !== SHARE_ACCESS_EDITABLE) {
+    rememberProtectedPublishSlug(importedStorage, manifest.slug);
+  }
   state.projectMode = PROJECT_MODE_LOCAL;
   state.publishedSlug = "";
   state.publishedBasePath = "";
