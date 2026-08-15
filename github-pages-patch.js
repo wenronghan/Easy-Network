@@ -5,6 +5,7 @@
   const readOnlyAccess = "read-only";
 
   const cloudManifestUrl = (slug) => `${shareService}/shared-projects/${encodeURIComponent(slug)}/project.json`;
+  const cloudProjectBaseUrl = (slug) => `${shareService}/shared-projects/${encodeURIComponent(slug)}/`;
 
   const currentAccessMode = () => {
     try {
@@ -13,6 +14,31 @@
         : readOnlyAccess;
     } catch (error) {
       return readOnlyAccess;
+    }
+  };
+
+  const repairCloudImageUrls = () => {
+    try {
+      if (!state || state.projectMode !== "cloud" || !state.publishedSlug) return;
+      const projectBase = cloudProjectBaseUrl(state.publishedSlug);
+      const publicSharedBase = `${publicBase}shared-projects/${encodeURIComponent(state.publishedSlug)}/`;
+      const fixImage = (image) => {
+        const raw = image.path || image.url || "";
+        if (!raw) return image;
+        let url = image.url || raw;
+        if (!/^https?:|^blob:|^data:/i.test(raw)) url = new URL(raw, projectBase).href;
+        else if (url.startsWith(publicSharedBase)) url = url.replace(publicSharedBase, projectBase);
+        else if (url.startsWith(`${location.origin}/shared-projects/`)) url = url.replace(`${location.origin}/shared-projects/${encodeURIComponent(state.publishedSlug)}/`, projectBase);
+        return { ...image, url };
+      };
+      state.images = (state.images || []).map(fixImage);
+      if (state.publishedManifest) {
+        state.publishedManifest.images = (state.publishedManifest.images || []).map(fixImage);
+        state.publishedManifest.basePath = projectBase;
+      }
+      state.publishedBasePath = projectBase;
+    } catch (error) {
+      console.warn("Could not repair cloud image URLs", error);
     }
   };
 
@@ -88,5 +114,6 @@
     };
   }
 
+  repairCloudImageUrls();
   if (typeof render === "function") render();
 })();
