@@ -1,24 +1,41 @@
 (() => {
   const publicBase = "https://wenronghan.github.io/Easy-Network/";
+  const shareService = "https://easy-network-share.wenronghan7.chatgpt.site";
+
+  const cloudManifestUrl = (slug) => `${shareService}/shared-projects/${encodeURIComponent(slug)}/project.json`;
 
   const githubShareUrl = (slug, manifestUrl, itemId = "") => {
-    if (!manifestUrl) return "";
+    if (!slug || !manifestUrl) return "";
     const itemPath = itemId ? `/items/${encodeURIComponent(itemId)}` : "";
-    return `${publicBase}#/cloud/${encodeURIComponent(slug)}${itemPath}?source=${encodeURIComponent(manifestUrl)}`;
+    return `${publicBase}#/cloud/${encodeURIComponent(slug)}${itemPath}`;
   };
 
   const normalizeShareUrl = (url) => {
-    const match = String(url || "").match(/#\/cloud\/([^/?#]+)(\/items\/([^?#]+))?\?source=([^#]+)/);
+    const match = String(url || "").match(/#\/cloud\/([^/?#]+)(\/items\/([^?#]+))?(\?source=([^#]+))?/);
     if (!match) return url;
-    return githubShareUrl(
-      decodeURIComponent(match[1]),
-      decodeURIComponent(match[4]),
-      match[3] ? decodeURIComponent(match[3]) : ""
-    );
+    const slug = decodeURIComponent(match[1]);
+    const manifestUrl = match[5] ? decodeURIComponent(match[5]) : cloudManifestUrl(slug);
+    return githubShareUrl(slug, manifestUrl, match[3] ? decodeURIComponent(match[3]) : "");
   };
+
+  if (typeof getCloudManifestUrlFromConfig === "function") {
+    getCloudManifestUrlFromConfig = cloudManifestUrl;
+  }
 
   if (typeof getCloudProjectShareLink === "function") {
     getCloudProjectShareLink = (slug, manifestUrl) => githubShareUrl(slug, manifestUrl);
+  }
+
+  if (typeof getArtifactRouteHash === "function") {
+    getArtifactRouteHash = (artifactId) => {
+      if (window.state?.projectMode === "cloud" || window.state?.cloudManifestUrl) {
+        return `#/cloud/${encodeURIComponent(window.state.publishedSlug)}/items/${encodeURIComponent(artifactId)}`;
+      }
+      if (typeof isPublishedMode === "function" && isPublishedMode()) {
+        return `#/project/${encodeURIComponent(window.state.publishedSlug)}/items/${encodeURIComponent(artifactId)}`;
+      }
+      return `#/items/${encodeURIComponent(artifactId)}`;
+    };
   }
 
   if (typeof publishProjectToLocalServer === "function") {
