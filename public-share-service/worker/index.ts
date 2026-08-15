@@ -117,6 +117,17 @@ async function storeProjectFile(
   return relativePath;
 }
 
+async function projectManifestExists(env: Env, slug: string): Promise<boolean> {
+  return Boolean(await env.PROJECT_FILES.head(`projects/${slug}/project.json`));
+}
+
+function slugConflictResponse(slug: string): Response {
+  return jsonResponse({
+    ok: false,
+    error: `The link "${slug}" already exists. Change the Link slug and try again.`,
+  }, 409);
+}
+
 function publishResult(request: Request, payload: { accessMode?: string; publicBaseUrl?: string }, slug: string): Response {
   const origin = new URL(request.url).origin;
   const manifestUrl = `${origin}/shared-projects/${encodeURIComponent(slug)}/project.json`;
@@ -126,9 +137,12 @@ function publishResult(request: Request, payload: { accessMode?: string; publicB
   return jsonResponse({ ok: true, slug, shareUrl, manifestUrl, accessMode: payload.accessMode || "read-only" });
 }
 
-async function startPublishProject(request: Request): Promise<Response> {
+async function startPublishProject(request: Request, env: Env): Promise<Response> {
   const payload = await request.json() as { slug?: string };
   const slug = cleanSlug(payload.slug);
+  if (await projectManifestExists(env, slug)) {
+    return slugConflictResponse(slug);
+  }
   return jsonResponse({ ok: true, slug });
 }
 
@@ -148,6 +162,9 @@ async function finishPublishProject(request: Request, env: Env): Promise<Respons
     manifest?: { slug?: string; [key: string]: unknown };
   };
   const slug = cleanSlug(payload.slug || payload.manifest?.slug);
+  if (await projectManifestExists(env, slug)) {
+    return slugConflictResponse(slug);
+  }
   await storeProjectFile(env, slug, {
     path: "project.json",
     text: JSON.stringify({ ...(payload.manifest || {}), slug }, null, 2),
@@ -158,6 +175,7 @@ async function finishPublishProject(request: Request, env: Env): Promise<Respons
 
 async function publishProject(request: Request, env: Env): Promise<Response> {
   const payload = await request.json() as {
+    action?: string;
     slug?: string;
     accessMode?: string;
     publicBaseUrl?: string;
@@ -166,6 +184,9 @@ async function publishProject(request: Request, env: Env): Promise<Response> {
   };
   const slug = cleanSlug(payload.slug || payload.manifest?.slug);
   if (payload.action === "start") {
+    if (await projectManifestExists(env, slug)) {
+      return slugConflictResponse(slug);
+    }
     return jsonResponse({ ok: true, slug });
   }
   if (payload.action === "file") {
@@ -173,6 +194,9 @@ async function publishProject(request: Request, env: Env): Promise<Response> {
     return jsonResponse({ ok: true, slug, path });
   }
   if (payload.action === "finish") {
+    if (await projectManifestExists(env, slug)) {
+      return slugConflictResponse(slug);
+    }
     await storeProjectFile(env, slug, {
       path: "project.json",
       text: JSON.stringify({ ...(payload.manifest || {}), slug }, null, 2),
@@ -182,6 +206,9 @@ async function publishProject(request: Request, env: Env): Promise<Response> {
   }
 
   const files = Array.isArray(payload.files) ? payload.files : [];
+  if (await projectManifestExists(env, slug)) {
+    return slugConflictResponse(slug);
+  }
   if (!files.some((file) => cleanRelativePath(file.path) === "project.json")) {
     return jsonResponse({ ok: false, error: "project.json is required." }, 400);
   }
@@ -224,7 +251,7 @@ const worker = {
     const url = new URL(request.url);
 
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
-    if (request.method === "POST" && url.pathname === "/api/publish-project/start") return startPublishProject(request);
+    if (request.method === "POST" && url.pathname === "/api/publish-project/start") return startPublishProject(request, env);
     if (request.method === "POST" && url.pathname === "/api/publish-project/file") return uploadProjectFile(request, env);
     if (request.method === "POST" && url.pathname === "/api/publish-project/finish") return finishPublishProject(request, env);
     if (request.method === "POST" && url.pathname === "/api/publish-project") return publishProject(request, env);
