@@ -292,5 +292,31 @@
       localStorage.setItem("easy-network-share-service-url", "https://easy-network-share.wenronghan7.chatgpt.site");
     </script>
     <script src="https://easy-network-share.wenronghan7.chatgpt.site/app.js?v=20260815-github-share"></script>
+    <script>
+      (function () {
+        const publicBase = "https://wenronghan.github.io/Easy-Network/";
+        function githubShareUrl(slug, manifestUrl, itemId) {
+          if (!manifestUrl) return "";
+          const itemPath = itemId ? `/items/${encodeURIComponent(itemId)}` : "";
+          return `${publicBase}#/cloud/${encodeURIComponent(slug)}${itemPath}?source=${encodeURIComponent(manifestUrl)}`;
+        }
+        function normalizeShareUrl(url) {
+          const match = String(url || "").match(/#\/cloud\/([^/?#]+)(\/items\/([^?#]+))?\?source=([^#]+)/);
+          if (!match) return url;
+          return githubShareUrl(decodeURIComponent(match[1]), decodeURIComponent(match[4]), match[3] ? decodeURIComponent(match[3]) : "");
+        }
+        if (typeof getCloudProjectShareLink === "function") {
+          getCloudProjectShareLink = function (slug, manifestUrl) {
+            return githubShareUrl(slug, manifestUrl, "");
+          };
+        }
+        if (typeof publishProjectToLocalServer === "function") {
+          const originalPublishProjectToLocalServer = publishProjectToLocalServer;
+          publishProjectToLocalServer = async function (options) {
+            return normalizeShareUrl(await originalPublishProjectToLocalServer(options));
+          };
+        }
+      })();
+    </script>
   </body>
 </html>
