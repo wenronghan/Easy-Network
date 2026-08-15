@@ -27,6 +27,6 @@
 
   const appScript = loadScript(`${shareService}/app.js?v=20260815-github-share`);
   appScript.addEventListener("load", () => {
-    loadScript("github-pages-patch.js?v=20260815-permissions");
+    loadScript("github-pages-patch.js?v=20260815-image-fix");
   });
 })();
