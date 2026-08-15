@@ -3299,9 +3299,9 @@ function renderFieldOptions() {
     dom.artifactFieldList.append(createWeightedFieldRow(field, selection.checked, selection.weight));
   });
   if (!customFields.length) {
-    dom.artifactFieldList.innerHTML = `<p class="quiet-line">${state.language === "en" ? "No custom fields in the current scope." : "当前范围暂无自定义字段。"}</p>`;
+    dom.artifactFieldList.innerHTML = `<p class="quiet-line">${state.language === "en" ? "No custom fields in the current scope. Metadata fields are listed below." : "当前范围暂无自定义字段。元数据字段在下方列出。"}</p>`;
   } else if (state.fieldUi.showCheckedOnly && !dom.artifactFieldList.children.length) {
-    dom.artifactFieldList.innerHTML = `<p class="quiet-line">${state.language === "en" ? "No checked custom fields." : "暂无已勾选的自定义字段。"}</p>`;
+    dom.artifactFieldList.innerHTML = `<p class="quiet-line">${state.language === "en" ? "No checked custom fields. Metadata fields are still available below." : "暂无已勾选的自定义字段。仍可使用下方元数据字段。"}</p>`;
   }
   prepareFieldsForDisplay(systemFields, { ignoreCheckedOnly: true }).forEach((field) => {
     const selection = getInitialFieldSelection(field, false, 0);
