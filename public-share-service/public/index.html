@@ -3,7 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Easy Network Inventory</title>
+    <title>Easy Network</title>
+    <script>
+      function updateEasyNetworkTitle() {
+        document.title = window.location.hash.includes("network") ? "Easy Network Analysis" : "Easy Network";
+      }
+      updateEasyNetworkTitle();
+      window.addEventListener("hashchange", updateEasyNetworkTitle);
+    </script>
     <script>
       window.location.replace("https://wenronghan.github.io/Easy-Network/" + window.location.hash);
     </script>
@@ -291,6 +298,6 @@
     </div>
 
     <script src="utif.min.js?v=20260815-tiff-support"></script>
-    <script src="app.js?v=20260815-tiff-support"></script>
+    <script src="app.js?v=20260815-title-mode"></script>
   </body>
 </html>
