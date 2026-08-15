@@ -13,6 +13,9 @@ const PUBLISH_SCOPE_INVENTORY = "inventory";
 const PUBLISH_SCOPE_PROJECT = "project";
 const SHARE_ACCESS_READ_ONLY = "read-only";
 const SHARE_ACCESS_EDITABLE = "editable";
+const SHARE_IMAGE_MAX_DIMENSION = 1600;
+const SHARE_IMAGE_JPEG_QUALITY = 0.78;
+const SHARE_UPLOAD_BODY_LIMIT = 75 * 1024 * 1024;
 
 const SYSTEM_FIELDS = [
   { id: "system-id", label: "ID", type: "text", visibleInList: true, isSystemField: true },
@@ -4528,6 +4531,36 @@ async function imageBlobForPackage(image) {
   return response.blob();
 }
 
+async function optimizeImageBlobForShare(blob) {
+  if (!blob?.type?.startsWith("image/") || /svg|gif/i.test(blob.type)) return blob;
+  if (!("createImageBitmap" in window)) return blob;
+  let bitmap = null;
+  try {
+    bitmap = await createImageBitmap(blob);
+    const longestSide = Math.max(bitmap.width, bitmap.height);
+    const scale = Math.min(1, SHARE_IMAGE_MAX_DIMENSION / Math.max(1, longestSide));
+    if (scale === 1 && blob.size <= 900 * 1024 && /jpe?g/i.test(blob.type)) return blob;
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) return blob;
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(bitmap, 0, 0, width, height);
+    const optimized = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", SHARE_IMAGE_JPEG_QUALITY));
+    return optimized && optimized.size < blob.size ? optimized : blob;
+  } catch (error) {
+    return blob;
+  } finally {
+    bitmap?.close?.();
+  }
+}
+
 function stripImageBlob(image) {
   const { blob, _objectUrl, ...rest } = image || {};
   return { ...rest, viewState: { ...(image?.viewState || {}) } };
@@ -4556,7 +4589,8 @@ async function createProjectPackage(options = {}) {
     const ext = image.filename?.includes(".") ? image.filename.slice(image.filename.lastIndexOf(".")) : "";
     const filename = sanitizePackagePathPart(image.filename || `${image.id}${ext}`, `${image.id}${ext || ".bin"}`);
     const path = `images/${sanitizePackagePathPart(image.artifactId, "artifact")}/${String((image.sortOrder || 0) + 1).padStart(3, "0")}-${filename}`;
-    const blob = await imageBlobForPackage(image);
+    const originalBlob = await imageBlobForPackage(image);
+    const blob = options.optimizeImages ? await optimizeImageBlobForShare(originalBlob) : originalBlob;
     imageEntries.push({ path, blob });
     images.push({
       ...stripImageBlob(image),
@@ -4865,6 +4899,10 @@ function blobToDataUrl(blob) {
   });
 }
 
+function measurePayloadBytes(payload) {
+  return new Blob([JSON.stringify(payload)]).size;
+}
+
 async function publishProjectToLocalServer(options = {}) {
   const publishTarget = getPublishEndpointConfig();
   if (!publishTarget.endpoint) {
@@ -4876,7 +4914,7 @@ async function publishProjectToLocalServer(options = {}) {
     : getPublishStorageName(scope);
   const accessMode = options.accessMode === SHARE_ACCESS_EDITABLE ? SHARE_ACCESS_EDITABLE : SHARE_ACCESS_READ_ONLY;
   const slug = getPublishSlugForAccess(scope, storageName, accessMode);
-  const bundle = await createProjectPackage({ publishable: true, slug, scope, storageName, accessMode });
+  const bundle = await createProjectPackage({ publishable: true, slug, scope, storageName, accessMode, optimizeImages: true });
   const serviceBaseUrl = publishTarget.serviceBaseUrl;
   if (serviceBaseUrl) {
     const projectBaseUrl = `${serviceBaseUrl}/shared-projects/${encodeURIComponent(slug)}/`;
@@ -4904,12 +4942,16 @@ async function publishProjectToLocalServer(options = {}) {
       contentType: entry.blob.type || "application/octet-stream"
     });
   }
+  const requestPayload = { slug, accessMode, publicBaseUrl: getPublicBaseUrl(), manifest: bundle.manifest, files };
+  if (measurePayloadBytes(requestPayload) > SHARE_UPLOAD_BODY_LIMIT) {
+    throw new Error("The selected images are still too large to create a web link. Export a smaller inventory, remove some images, or use Download File.");
+  }
   let response;
   try {
     response = await fetch(publishTarget.endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json;charset=utf-8" },
-      body: JSON.stringify({ slug, accessMode, publicBaseUrl: getPublicBaseUrl(), manifest: bundle.manifest, files })
+      body: JSON.stringify(requestPayload)
     });
   } catch (error) {
     throw new Error("Could not reach the upload service. Use Download File, or open the local Easy Network server and try Create Link there.");
