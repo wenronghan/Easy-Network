@@ -98,6 +98,64 @@ function dataUrlToBytes(value: string): Uint8Array {
   return bytes;
 }
 
+async function storeProjectFile(
+  env: Env,
+  slug: string,
+  file: { path?: string; text?: string; dataUrl?: string; contentType?: string },
+): Promise<string> {
+  const relativePath = cleanRelativePath(file.path);
+  if (!relativePath) return "";
+  const key = `projects/${slug}/${relativePath}`;
+  const contentType = file.contentType || contentTypeForPath(relativePath);
+  const body = typeof file.dataUrl === "string"
+    ? dataUrlToBytes(file.dataUrl)
+    : String(file.text || "");
+  await env.PROJECT_FILES.put(key, body, {
+    httpMetadata: { contentType },
+    customMetadata: { slug },
+  });
+  return relativePath;
+}
+
+function publishResult(request: Request, payload: { accessMode?: string; publicBaseUrl?: string }, slug: string): Response {
+  const origin = new URL(request.url).origin;
+  const manifestUrl = `${origin}/shared-projects/${encodeURIComponent(slug)}/project.json`;
+  const publicBaseUrl = String(payload.publicBaseUrl || "").replace(/\/?$/, "/");
+  const shareBase = publicBaseUrl || `${origin}/index.html`;
+  const shareUrl = `${shareBase}#/cloud/${encodeURIComponent(slug)}`;
+  return jsonResponse({ ok: true, slug, shareUrl, manifestUrl, accessMode: payload.accessMode || "read-only" });
+}
+
+async function startPublishProject(request: Request): Promise<Response> {
+  const payload = await request.json() as { slug?: string };
+  const slug = cleanSlug(payload.slug);
+  return jsonResponse({ ok: true, slug });
+}
+
+async function uploadProjectFile(request: Request, env: Env): Promise<Response> {
+  const payload = await request.json() as { slug?: string; path?: string; text?: string; dataUrl?: string; contentType?: string };
+  const slug = cleanSlug(payload.slug);
+  const path = await storeProjectFile(env, slug, payload);
+  return jsonResponse({ ok: true, slug, path });
+}
+
+async function finishPublishProject(request: Request, env: Env): Promise<Response> {
+  const payload = await request.json() as {
+    action?: string;
+    slug?: string;
+    accessMode?: string;
+    publicBaseUrl?: string;
+    manifest?: { slug?: string; [key: string]: unknown };
+  };
+  const slug = cleanSlug(payload.slug || payload.manifest?.slug);
+  await storeProjectFile(env, slug, {
+    path: "project.json",
+    text: JSON.stringify({ ...(payload.manifest || {}), slug }, null, 2),
+    contentType: "application/json;charset=utf-8",
+  });
+  return publishResult(request, payload, slug);
+}
+
 async function publishProject(request: Request, env: Env): Promise<Response> {
   const payload = await request.json() as {
     slug?: string;
@@ -107,31 +165,32 @@ async function publishProject(request: Request, env: Env): Promise<Response> {
     files?: Array<{ path?: string; text?: string; dataUrl?: string; contentType?: string }>;
   };
   const slug = cleanSlug(payload.slug || payload.manifest?.slug);
+  if (payload.action === "start") {
+    return jsonResponse({ ok: true, slug });
+  }
+  if (payload.action === "file") {
+    const path = await storeProjectFile(env, slug, payload);
+    return jsonResponse({ ok: true, slug, path });
+  }
+  if (payload.action === "finish") {
+    await storeProjectFile(env, slug, {
+      path: "project.json",
+      text: JSON.stringify({ ...(payload.manifest || {}), slug }, null, 2),
+      contentType: "application/json;charset=utf-8",
+    });
+    return publishResult(request, payload, slug);
+  }
+
   const files = Array.isArray(payload.files) ? payload.files : [];
   if (!files.some((file) => cleanRelativePath(file.path) === "project.json")) {
     return jsonResponse({ ok: false, error: "project.json is required." }, 400);
   }
 
   for (const file of files) {
-    const relativePath = cleanRelativePath(file.path);
-    if (!relativePath) continue;
-    const key = `projects/${slug}/${relativePath}`;
-    const contentType = file.contentType || contentTypeForPath(relativePath);
-    const body = typeof file.dataUrl === "string"
-      ? dataUrlToBytes(file.dataUrl)
-      : String(file.text || "");
-    await env.PROJECT_FILES.put(key, body, {
-      httpMetadata: { contentType },
-      customMetadata: { slug },
-    });
+    await storeProjectFile(env, slug, file);
   }
 
-  const origin = new URL(request.url).origin;
-  const manifestUrl = `${origin}/shared-projects/${encodeURIComponent(slug)}/project.json`;
-  const publicBaseUrl = String(payload.publicBaseUrl || "").replace(/\/?$/, "/");
-  const shareBase = publicBaseUrl || `${origin}/index.html`;
-  const shareUrl = `${shareBase}#/cloud/${encodeURIComponent(slug)}`;
-  return jsonResponse({ ok: true, slug, shareUrl, manifestUrl, accessMode: payload.accessMode || "read-only" });
+  return publishResult(request, payload, slug);
 }
 
 async function getSharedProjectFile(request: Request, env: Env): Promise<Response> {
@@ -165,6 +224,9 @@ const worker = {
     const url = new URL(request.url);
 
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+    if (request.method === "POST" && url.pathname === "/api/publish-project/start") return startPublishProject(request);
+    if (request.method === "POST" && url.pathname === "/api/publish-project/file") return uploadProjectFile(request, env);
+    if (request.method === "POST" && url.pathname === "/api/publish-project/finish") return finishPublishProject(request, env);
     if (request.method === "POST" && url.pathname === "/api/publish-project") return publishProject(request, env);
     if (request.method === "GET" && url.pathname.startsWith("/shared-projects/")) return getSharedProjectFile(request, env);
     if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) return publicAppRedirectPage();
