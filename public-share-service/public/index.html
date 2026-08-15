@@ -4,7 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Easy Network</title>
+    <style>
+      html.app-loading body { visibility: hidden; }
+    </style>
     <script>
+      document.documentElement.classList.add("app-loading");
+      window.setTimeout(() => document.documentElement.classList.remove("app-loading"), 4000);
       function updateEasyNetworkTitle() {
         document.title = "Easy Network";
       }
@@ -298,6 +303,6 @@
     </div>
 
     <script src="utif.min.js?v=20260815-tiff-support"></script>
-    <script src="app.js?v=20260815-title-simple"></script>
+    <script src="app.js?v=20260815-hide-loading"></script>
   </body>
 </html>
