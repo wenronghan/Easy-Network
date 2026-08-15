@@ -1189,6 +1189,7 @@ async function boot() {
   renderAnalysisMode();
   renderAll();
   fitGraph();
+  markAppReady();
 }
 
 async function loadArtifacts() {
@@ -6075,9 +6076,14 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function markAppReady() {
+  document.documentElement.classList.remove("app-loading");
+}
+
 boot().catch((error) => {
   console.error(error);
-  window.alert(`缃戠粶鍒嗘瀽椤靛惎鍔ㄥけ璐ワ細${error.message}`);
+  markAppReady();
+  window.alert(`Network page failed to start: ${error.message}`);
 });
 
 
