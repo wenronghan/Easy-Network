@@ -110,7 +110,7 @@ In a published project, use **Copy Project Link** or **Copy Item Link** to copy 
 
 ## Share Links
 
-Click **Create Link** to upload a snapshot through the configured Easy Network upload service. The generated link opens the project through the GitHub Pages app while loading `project.json`, CSV data, and web-optimized image files from the saved snapshot. Use **Download File** when you need to preserve original image files in a portable ZIP.
+Click **Create Link** to upload a snapshot through the configured Easy Network upload service. The dialog shows percentage progress while images are prepared and uploaded. The generated link opens the project through the GitHub Pages app while loading `project.json`, CSV data, and web-optimized image files from the saved snapshot. Use **Download File** when you need to preserve original image files in a portable ZIP.
 
 The generated link is copied automatically and uses the form:
 

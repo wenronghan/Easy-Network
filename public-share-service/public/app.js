@@ -15,7 +15,6 @@ const SHARE_ACCESS_READ_ONLY = "read-only";
 const SHARE_ACCESS_EDITABLE = "editable";
 const SHARE_IMAGE_MAX_DIMENSION = 1600;
 const SHARE_IMAGE_JPEG_QUALITY = 0.78;
-const SHARE_UPLOAD_BODY_LIMIT = 75 * 1024 * 1024;
 
 const SYSTEM_FIELDS = [
   { id: "system-id", label: "ID", type: "text", visibleInList: true, isSystemField: true },
@@ -4506,6 +4505,14 @@ function getExportZipFilename(slug, suffix = "") {
   return safeSuffix ? `easy-network-${safeSlug}-${safeSuffix}.zip` : `easy-network-${safeSlug}.zip`;
 }
 
+function notifyProgress(callback, percent, label = "Working") {
+  if (typeof callback !== "function") return;
+  callback({
+    percent: Math.max(0, Math.min(100, Math.round(percent))),
+    label
+  });
+}
+
 function uniqueName(baseName, existingNames) {
   const base = cleanCell(baseName) || "Imported Project";
   if (!existingNames.has(base)) return base;
@@ -4567,6 +4574,7 @@ function stripImageBlob(image) {
 }
 
 async function createProjectPackage(options = {}) {
+  notifyProgress(options.onProgress, 5, options.optimizeImages ? "Preparing images" : "Preparing package");
   const scope = options.scope === PUBLISH_SCOPE_PROJECT ? PUBLISH_SCOPE_PROJECT : (options.scope || state.publishScope || PUBLISH_SCOPE_INVENTORY);
   const storageName = Object.prototype.hasOwnProperty.call(options, "storageName")
     ? options.storageName
@@ -4585,7 +4593,8 @@ async function createProjectPackage(options = {}) {
   const slug = options.slug || getPublishSlug(scope, storageName);
   const imageEntries = [];
   const images = [];
-  for (const image of sourceImages) {
+  for (let imageIndex = 0; imageIndex < sourceImages.length; imageIndex += 1) {
+    const image = sourceImages[imageIndex];
     const ext = image.filename?.includes(".") ? image.filename.slice(image.filename.lastIndexOf(".")) : "";
     const filename = sanitizePackagePathPart(image.filename || `${image.id}${ext}`, `${image.id}${ext || ".bin"}`);
     const path = `images/${sanitizePackagePathPart(image.artifactId, "artifact")}/${String((image.sortOrder || 0) + 1).padStart(3, "0")}-${filename}`;
@@ -4599,6 +4608,9 @@ async function createProjectPackage(options = {}) {
       mimeType: blob.type || image.mimeType || "",
       size: blob.size ?? image.size ?? 0
     });
+    if (options.optimizeImages) {
+      notifyProgress(options.onProgress, 8 + ((imageIndex + 1) / Math.max(1, sourceImages.length)) * 42, "Preparing images");
+    }
   }
   const pathByImageId = new Map(images.map((image) => [image.id, image.path]));
   const artifacts = projectArtifacts.map((artifact) => {
@@ -4795,6 +4807,13 @@ function openExportDialog() {
   const feedback = document.createElement("p");
   feedback.className = "quiet-line";
   feedback.textContent = "A share link can be opened on another device after it is created.";
+  const progress = document.createElement("progress");
+  progress.className = "export-progress";
+  progress.max = 100;
+  progress.value = 0;
+  progress.hidden = true;
+  progress.style.width = "100%";
+  progress.style.margin = "8px 0 0";
 
   const actions = document.createElement("div");
   actions.className = "dialog-actions";
@@ -4859,23 +4878,35 @@ function openExportDialog() {
   cloudButton.addEventListener("click", async () => {
     const options = getSelectedExportOptions();
     cloudButton.disabled = true;
-    cloudButton.textContent = "Creating...";
+    localButton.disabled = true;
+    progress.hidden = false;
+    progress.value = 0;
+    const updateProgress = ({ percent, label }) => {
+      const value = Math.max(0, Math.min(100, Number(percent) || 0));
+      progress.value = value;
+      feedback.textContent = `${label || "Creating share link"} ${Math.round(value)}%`;
+      cloudButton.textContent = `Creating ${Math.round(value)}%`;
+    };
+    updateProgress({ percent: 0, label: "Preparing" });
     try {
-      const link = await publishProjectToLocalServer(options);
+      const link = await publishProjectToLocalServer({ ...options, onProgress: updateProgress });
       if (link) {
         linkInput.value = link;
         linkLabel.hidden = false;
         linkInput.hidden = false;
         copyButton.hidden = false;
         await copyTextToClipboard(link);
+        progress.value = 100;
         feedback.textContent = "Share link created and copied.";
         linkInput.focus();
         linkInput.select();
       }
     } catch (error) {
+      progress.hidden = true;
       feedback.textContent = error?.message || String(error);
     }
     cloudButton.disabled = false;
+    localButton.disabled = false;
     cloudButton.textContent = "Create Link";
     syncExportDialog();
   });
@@ -4883,7 +4914,7 @@ function openExportDialog() {
     if (linkInput.value) copyTextToClipboard(linkInput.value);
   });
 
-  dialog.append(header, hint, scopeLabel, scopeSelect, inventoryLabel, inventorySelect, accessLabel, accessSelect, linkLabel, linkInput, feedback, actions);
+  dialog.append(header, hint, scopeLabel, scopeSelect, inventoryLabel, inventorySelect, accessLabel, accessSelect, linkLabel, linkInput, feedback, progress, actions);
   backdrop.append(dialog);
   document.body.append(backdrop);
   syncExportDialog();
@@ -4899,22 +4930,45 @@ function blobToDataUrl(blob) {
   });
 }
 
-function measurePayloadBytes(payload) {
-  return new Blob([JSON.stringify(payload)]).size;
+function postJsonWithUploadProgress(endpoint, payload, onUploadProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", endpoint);
+    xhr.setRequestHeader("Content-Type", "application/json;charset=utf-8");
+    xhr.upload.addEventListener("progress", (event) => {
+      if (typeof onUploadProgress === "function") {
+        onUploadProgress(event.loaded, event.lengthComputable ? event.total : 0);
+      }
+    });
+    xhr.addEventListener("load", () => {
+      let responsePayload = null;
+      try {
+        responsePayload = JSON.parse(xhr.responseText || "null");
+      } catch (error) {
+        responsePayload = null;
+      }
+      resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, payload: responsePayload });
+    });
+    xhr.addEventListener("error", () => reject(new Error("Upload failed.")));
+    xhr.addEventListener("abort", () => reject(new Error("Upload was canceled.")));
+    xhr.send(JSON.stringify(payload));
+  });
 }
 
 async function publishProjectToLocalServer(options = {}) {
+  const onProgress = options.onProgress;
   const publishTarget = getPublishEndpointConfig();
   if (!publishTarget.endpoint) {
     throw new Error("Create Link needs an upload service. GitHub Pages is static and cannot receive uploaded images. Use Download File, or open the local Easy Network server to create a link.");
   }
+  notifyProgress(onProgress, 1, "Preparing");
   const scope = options.scope === PUBLISH_SCOPE_PROJECT ? PUBLISH_SCOPE_PROJECT : (options.scope || state.publishScope);
   const storageName = Object.prototype.hasOwnProperty.call(options, "storageName")
     ? options.storageName
     : getPublishStorageName(scope);
   const accessMode = options.accessMode === SHARE_ACCESS_EDITABLE ? SHARE_ACCESS_EDITABLE : SHARE_ACCESS_READ_ONLY;
   const slug = getPublishSlugForAccess(scope, storageName, accessMode);
-  const bundle = await createProjectPackage({ publishable: true, slug, scope, storageName, accessMode, optimizeImages: true });
+  const bundle = await createProjectPackage({ publishable: true, slug, scope, storageName, accessMode, optimizeImages: true, onProgress });
   const serviceBaseUrl = publishTarget.serviceBaseUrl;
   if (serviceBaseUrl) {
     const projectBaseUrl = `${serviceBaseUrl}/shared-projects/${encodeURIComponent(slug)}/`;
@@ -4935,36 +4989,34 @@ async function publishProjectToLocalServer(options = {}) {
       contentType: "text/csv;charset=utf-8"
     }
   ];
-  for (const entry of bundle.imageEntries) {
+  for (let index = 0; index < bundle.imageEntries.length; index += 1) {
+    const entry = bundle.imageEntries[index];
     files.push({
       path: entry.path,
       dataUrl: await blobToDataUrl(entry.blob),
       contentType: entry.blob.type || "application/octet-stream"
     });
+    notifyProgress(onProgress, 50 + ((index + 1) / Math.max(1, bundle.imageEntries.length)) * 25, "Preparing upload");
   }
   const requestPayload = { slug, accessMode, publicBaseUrl: getPublicBaseUrl(), manifest: bundle.manifest, files };
-  if (measurePayloadBytes(requestPayload) > SHARE_UPLOAD_BODY_LIMIT) {
-    throw new Error("The selected images are still too large to create a web link. Export a smaller inventory, remove some images, or use Download File.");
-  }
-  let response;
+  notifyProgress(onProgress, 76, "Uploading");
+  let uploadResult;
   try {
-    response = await fetch(publishTarget.endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json;charset=utf-8" },
-      body: JSON.stringify(requestPayload)
+    uploadResult = await postJsonWithUploadProgress(publishTarget.endpoint, requestPayload, (loaded, total) => {
+      if (total > 0) {
+        notifyProgress(onProgress, 76 + (loaded / total) * 22, "Uploading");
+      } else {
+        notifyProgress(onProgress, 85, "Uploading");
+      }
     });
   } catch (error) {
-    throw new Error("Could not reach the upload service. Use Download File, or open the local Easy Network server and try Create Link there.");
+    throw new Error("Could not reach the upload service. Use Download File, or try a smaller image set.");
   }
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch (error) {
-    payload = null;
-  }
-  if (!response.ok || !payload?.ok || !payload.manifestUrl) {
+  const payload = uploadResult.payload;
+  if (!uploadResult.ok || !payload?.ok || !payload.manifestUrl) {
     throw new Error(payload?.error || "Could not create a share link. Please try again.");
   }
+  notifyProgress(onProgress, 100, "Done");
   return getCloudProjectShareLink(payload.slug || slug, payload.manifestUrl);
 }
 
