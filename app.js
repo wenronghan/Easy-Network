@@ -8,7 +8,8 @@ const PUBLIC_BASE_URL_STORAGE_KEY = "easy-network-public-base-url";
 const SHARE_SERVICE_URL_STORAGE_KEY = "easy-network-share-service-url";
 const PUBLISH_SCOPE_STORAGE_KEY = "easy-network-publish-scope";
 const DEFAULT_PUBLIC_BASE_URL = "https://wenronghan.github.io/Easy-Network/";
-const DEFAULT_SHARE_SERVICE_URL = "https://easy-network-share.wenronghan7.chatgpt.site";
+const DEFAULT_SHARE_SERVICE_URL = "";
+const LEGACY_SHARE_SERVICE_URLS = new Set(["https://easy-network-share.wenronghan7.chatgpt.site"]);
 const PUBLISH_SCOPE_INVENTORY = "inventory";
 const PUBLISH_SCOPE_PROJECT = "project";
 const SHARE_ACCESS_READ_ONLY = "read-only";
@@ -4464,9 +4465,21 @@ function savePublicBaseUrl(value) {
 function getShareServiceBaseUrl() {
   const saved = localStorage.getItem(SHARE_SERVICE_URL_STORAGE_KEY);
   const configured = String(saved || DEFAULT_SHARE_SERVICE_URL || "").trim().replace(/\/+$/, "");
-  if (configured) return configured;
+  if (LEGACY_SHARE_SERVICE_URLS.has(configured)) {
+    localStorage.removeItem(SHARE_SERVICE_URL_STORAGE_KEY);
+    return "";
+  }
+  return configured;
+}
+
+function getPublishEndpointConfig() {
+  const serviceBaseUrl = getShareServiceBaseUrl();
+  if (serviceBaseUrl) {
+    return { endpoint: `${serviceBaseUrl}/api/publish-project`, serviceBaseUrl };
+  }
   const isLocal = /^(localhost|127\.|0\.0\.0\.0$)/.test(location.hostname);
-  return isLocal ? "" : location.origin;
+  if (isLocal) return { endpoint: "api/publish-project", serviceBaseUrl: "" };
+  return { endpoint: "", serviceBaseUrl: "" };
 }
 
 function getDefaultProjectShareUrl(slug = getCurrentProjectSlug()) {
@@ -4858,6 +4871,10 @@ function blobToDataUrl(blob) {
 }
 
 async function publishProjectToLocalServer(options = {}) {
+  const publishTarget = getPublishEndpointConfig();
+  if (!publishTarget.endpoint) {
+    throw new Error("Create Link needs an upload service. GitHub Pages is static and cannot receive uploaded images. Use Download File, or open the local Easy Network server to create a link.");
+  }
   const scope = options.scope === PUBLISH_SCOPE_PROJECT ? PUBLISH_SCOPE_PROJECT : (options.scope || state.publishScope);
   const storageName = Object.prototype.hasOwnProperty.call(options, "storageName")
     ? options.storageName
@@ -4865,7 +4882,7 @@ async function publishProjectToLocalServer(options = {}) {
   const accessMode = options.accessMode === SHARE_ACCESS_EDITABLE ? SHARE_ACCESS_EDITABLE : SHARE_ACCESS_READ_ONLY;
   const slug = getPublishSlugForAccess(scope, storageName, accessMode);
   const bundle = await createProjectPackage({ publishable: true, slug, scope, storageName, accessMode });
-  const serviceBaseUrl = getShareServiceBaseUrl();
+  const serviceBaseUrl = publishTarget.serviceBaseUrl;
   if (serviceBaseUrl) {
     const projectBaseUrl = `${serviceBaseUrl}/shared-projects/${encodeURIComponent(slug)}/`;
     bundle.manifest.images = bundle.manifest.images.map((image) => ({
@@ -4892,12 +4909,16 @@ async function publishProjectToLocalServer(options = {}) {
       contentType: entry.blob.type || "application/octet-stream"
     });
   }
-  const endpoint = serviceBaseUrl ? `${serviceBaseUrl}/api/publish-project` : "api/publish-project";
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json;charset=utf-8" },
-    body: JSON.stringify({ slug, accessMode, publicBaseUrl: getPublicBaseUrl(), manifest: bundle.manifest, files })
-  });
+  let response;
+  try {
+    response = await fetch(publishTarget.endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json;charset=utf-8" },
+      body: JSON.stringify({ slug, accessMode, publicBaseUrl: getPublicBaseUrl(), manifest: bundle.manifest, files })
+    });
+  } catch (error) {
+    throw new Error("Could not reach the upload service. Use Download File, or open the local Easy Network server and try Create Link there.");
+  }
   let payload = null;
   try {
     payload = await response.json();

@@ -1,10 +1,9 @@
 ﻿(() => {
   const publicBase = "https://wenronghan.github.io/Easy-Network/";
-  const shareService = "https://easy-network-share.wenronghan7.chatgpt.site";
   const bundleChunks = 8;
   const expectedLength = 62088;
   localStorage.setItem("easy-network-public-base-url", publicBase);
-  localStorage.setItem("easy-network-share-service-url", shareService);
+  localStorage.removeItem("easy-network-share-service-url");
 
   const ensureLocalStyles = () => {
     const localHref = new URL("styles.css?v=20260815-selfhost", window.location.href).href;

@@ -110,13 +110,7 @@ In a published project, use **Copy Project Link** or **Copy Item Link** to copy 
 
 ## Share Links
 
-Click **Create Link** to upload a read-only snapshot to the public Easy Network share service:
-
-```text
-https://easy-network-share.wenronghan7.chatgpt.site/shared-projects/{project-slug}/project.json
-https://easy-network-share.wenronghan7.chatgpt.site/shared-projects/{project-slug}/data/artifacts.csv
-https://easy-network-share.wenronghan7.chatgpt.site/shared-projects/{project-slug}/images/
-```
+Click **Create Link** only when Easy Network is opened from a server that provides `/api/publish-project`, such as the bundled local server or a configured upload service. GitHub Pages is static and cannot receive uploaded images by itself.
 
 The generated link is copied automatically and uses the form:
 
@@ -152,6 +146,6 @@ To restore manually, copy the files from that backup folder back to the project 
 
 ## Known Limits
 
-GitHub Pages publishing is still package-based: authors unzip the generated publishable package into the repository and let GitHub Pages serve it. One-click link creation uploads snapshots to `https://easy-network-share.wenronghan7.chatgpt.site`.
+GitHub Pages publishing is still package-based: authors unzip the generated publishable package into the repository and let GitHub Pages serve it. One-click link creation requires a writable upload service; GitHub Pages alone cannot accept uploaded project files.
 
 ZIP import is intended for Easy Network packages. Exported packages use standard uncompressed ZIP entries; import supports uncompressed entries and browser-supported deflate entries.
