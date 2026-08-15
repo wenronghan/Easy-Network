@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Easy Network Inventory</title>
-    <link rel="stylesheet" href="styles.css?v=20260608-shape-options" />
+    <link rel="stylesheet" href="https://easy-network-share.wenronghan7.chatgpt.site/styles.css?v=20260815-github-share" />
   </head>
   <body>
     <div class="app-shell">
@@ -18,8 +18,6 @@
         <div class="manager-overview" aria-label="管理器概览">
           <button id="inventoryWorkspaceTab" class="manager-tab active" type="button">Inventory</button>
           <button id="networkAnalysisLink" class="manager-tab" type="button">缃戠粶鍒嗘瀽</button>
-          <button id="shareStorageBtn" class="manager-tab compact" type="button">Share Inventory</button>
-          <button id="shareProjectBtn" class="manager-tab compact" type="button">Share Project</button>
           <span id="projectSummary" class="manager-status" hidden>本地项目 · 0 个条目</span>
         </div>
         <div class="topbar-actions">
@@ -31,6 +29,12 @@
           <button id="newProjectBtn" class="button subtle" type="button" hidden>新建项目</button>
           <label class="button primary" for="uploadCreateInput">上传图片建条目</label>
           <input id="uploadCreateInput" class="visually-hidden" type="file" accept="image/*" multiple />
+          <button id="exportProjectBtn" class="button subtle" type="button">Export</button>
+          <button id="importProjectBtn" class="button subtle" type="button">Import</button>
+          <input id="importProjectInput" class="visually-hidden" type="file" accept=".zip,.easy-network.zip,application/zip" />
+          <button id="copyProjectLinkBtn" class="button subtle" type="button" hidden>Copy Project Link</button>
+          <button id="copyItemLinkBtn" class="button subtle" type="button" hidden>Copy Item Link</button>
+          <button id="copyToLibraryBtn" class="button primary" type="button" hidden>Copy to My Library</button>
           <button id="createEmptyBtn" class="button" type="button">新建条目</button>
           <button id="openProjectBtn" class="button subtle" type="button" hidden>项目链接</button>
         </div>
@@ -169,7 +173,7 @@
       </main>
 
       <section id="networkWorkspace" class="network-tab-panel hidden" aria-label="Network analysis workspace">
-        <iframe id="networkFrame" title="Network analysis" data-src="network.html?embedded=1&v=20260608-shape-options"></iframe>
+        <iframe id="networkFrame" title="Network analysis" data-src="network.html?embedded=1&v=20260815-github-share"></iframe>
       </section>
     </div>
 
@@ -283,6 +287,10 @@
       </div>
     </div>
 
-    <script src="app.js?v=20260608-shape-options"></script>
+    <script>
+      localStorage.setItem("easy-network-public-base-url", "https://wenronghan.github.io/Easy-Network/");
+      localStorage.setItem("easy-network-share-service-url", "https://easy-network-share.wenronghan7.chatgpt.site");
+    </script>
+    <script src="https://easy-network-share.wenronghan7.chatgpt.site/app.js?v=20260815-github-share"></script>
   </body>
 </html>
