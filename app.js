@@ -25,7 +25,7 @@
     return script;
   };
 
-  const appScript = loadScript(`${shareService}/app.js?v=20260815-github-share`);
+  const appScript = loadScript(`${shareService}/app.js?v=20260815-download-fix`);
   appScript.addEventListener("load", () => {
     loadScript("github-pages-patch.js?v=20260815-image-fix");
   });
