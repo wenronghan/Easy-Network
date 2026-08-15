@@ -144,6 +144,17 @@ async function storeProjectFile(env, slug, file) {
     return relativePath;
 }
 
+async function projectManifestExists(env, slug) {
+  return Boolean(await env.PROJECT_FILES.head("projects/" + slug + "/project.json"));
+}
+
+function slugConflictResponse(slug) {
+  return jsonResponse({
+    ok: false,
+    error: "The link \"" + slug + "\" already exists. Change the Link slug and try again.",
+  }, 409);
+}
+
 function publishResult(request, payload, slug) {
   const origin = new URL(request.url).origin;
   const manifestUrl = origin + "/shared-projects/" + encodeURIComponent(slug) + "/project.json";
@@ -157,6 +168,7 @@ async function publishProject(request, env) {
   const payload = await request.json();
   const slug = cleanSlug(payload.slug || payload.manifest?.slug);
   if (payload.action === "start") {
+    if (await projectManifestExists(env, slug)) return slugConflictResponse(slug);
     return jsonResponse({ ok: true, slug });
   }
   if (payload.action === "file") {
@@ -164,6 +176,7 @@ async function publishProject(request, env) {
     return jsonResponse({ ok: true, slug, path });
   }
   if (payload.action === "finish") {
+    if (await projectManifestExists(env, slug)) return slugConflictResponse(slug);
     await storeProjectFile(env, slug, {
       path: "project.json",
       text: JSON.stringify({ ...(payload.manifest || {}), slug }, null, 2),
@@ -173,6 +186,7 @@ async function publishProject(request, env) {
   }
 
   const files = Array.isArray(payload.files) ? payload.files : [];
+  if (await projectManifestExists(env, slug)) return slugConflictResponse(slug);
   if (!files.some((file) => cleanRelativePath(file.path) === "project.json")) {
     return jsonResponse({ ok: false, error: "project.json is required." }, 400);
   }
