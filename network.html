@@ -4,6 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Easy Network</title>
+    <style>
+      html.app-loading body { visibility: hidden; }
+    </style>
+    <script>
+      document.documentElement.classList.add("app-loading");
+      window.setTimeout(() => document.documentElement.classList.remove("app-loading"), 4000);
+    </script>
     <link rel="stylesheet" href="styles.css?v=20260815-selfhost" />
     <link rel="stylesheet" href="network.css?v=20260815-selfhost" />
   </head>
@@ -458,7 +465,7 @@
       </div>
     </div>
 
-    <script src="network.js?v=20260815-field-message"></script>
+    <script src="network.js?v=20260815-hide-loading"></script>
   </body>
 </html>
 
