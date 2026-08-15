@@ -8,8 +8,7 @@ const PUBLIC_BASE_URL_STORAGE_KEY = "easy-network-public-base-url";
 const SHARE_SERVICE_URL_STORAGE_KEY = "easy-network-share-service-url";
 const PUBLISH_SCOPE_STORAGE_KEY = "easy-network-publish-scope";
 const DEFAULT_PUBLIC_BASE_URL = "https://wenronghan.github.io/Easy-Network/";
-const DEFAULT_SHARE_SERVICE_URL = "";
-const LEGACY_SHARE_SERVICE_URLS = new Set(["https://easy-network-share.wenronghan7.chatgpt.site"]);
+const DEFAULT_SHARE_SERVICE_URL = "https://easy-network-share.wenronghan7.chatgpt.site";
 const PUBLISH_SCOPE_INVENTORY = "inventory";
 const PUBLISH_SCOPE_PROJECT = "project";
 const SHARE_ACCESS_READ_ONLY = "read-only";
@@ -4465,10 +4464,6 @@ function savePublicBaseUrl(value) {
 function getShareServiceBaseUrl() {
   const saved = localStorage.getItem(SHARE_SERVICE_URL_STORAGE_KEY);
   const configured = String(saved || DEFAULT_SHARE_SERVICE_URL || "").trim().replace(/\/+$/, "");
-  if (LEGACY_SHARE_SERVICE_URLS.has(configured)) {
-    localStorage.removeItem(SHARE_SERVICE_URL_STORAGE_KEY);
-    return "";
-  }
   return configured;
 }
 

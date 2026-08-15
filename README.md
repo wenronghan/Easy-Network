@@ -110,7 +110,7 @@ In a published project, use **Copy Project Link** or **Copy Item Link** to copy 
 
 ## Share Links
 
-Click **Create Link** only when Easy Network is opened from a server that provides `/api/publish-project`, such as the bundled local server or a configured upload service. GitHub Pages is static and cannot receive uploaded images by itself.
+Click **Create Link** to upload a snapshot through the configured Easy Network upload service. The generated link opens the project through the GitHub Pages app while loading `project.json`, CSV data, and image files from the saved snapshot.
 
 The generated link is copied automatically and uses the form:
 
