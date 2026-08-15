@@ -26,18 +26,6 @@
     getCloudProjectShareLink = (slug, manifestUrl) => githubShareUrl(slug, manifestUrl);
   }
 
-  if (typeof getArtifactRouteHash === "function") {
-    getArtifactRouteHash = (artifactId) => {
-      if (window.state?.projectMode === "cloud" || window.state?.cloudManifestUrl) {
-        return `#/cloud/${encodeURIComponent(window.state.publishedSlug)}/items/${encodeURIComponent(artifactId)}`;
-      }
-      if (typeof isPublishedMode === "function" && isPublishedMode()) {
-        return `#/project/${encodeURIComponent(window.state.publishedSlug)}/items/${encodeURIComponent(artifactId)}`;
-      }
-      return `#/items/${encodeURIComponent(artifactId)}`;
-    };
-  }
-
   if (typeof publishProjectToLocalServer === "function") {
     const originalPublishProjectToLocalServer = publishProjectToLocalServer;
     publishProjectToLocalServer = async (options) => normalizeShareUrl(await originalPublishProjectToLocalServer(options));
