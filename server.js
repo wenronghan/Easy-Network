@@ -74,6 +74,30 @@ function readBody(req, limitBytes, callback) {
   req.on("end", () => callback(body));
 }
 
+function writeProjectFile(projectRoot, file) {
+  const relativePath = safeRelativePath(file.path);
+  if (!relativePath) return;
+  const filePath = path.resolve(projectRoot, relativePath);
+  if (!filePath.startsWith(projectRoot + path.sep) && filePath !== projectRoot) return;
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  if (typeof file.dataUrl === "string") {
+    const match = file.dataUrl.match(/^data:([^;,]+)?(?:;charset=[^;,]+)?;base64,(.+)$/);
+    if (!match) throw new Error(`Invalid file data for ${relativePath}.`);
+    fs.writeFileSync(filePath, Buffer.from(match[2], "base64"));
+  } else {
+    fs.writeFileSync(filePath, String(file.text || ""), "utf8");
+  }
+}
+
+function sendPublishResult(req, res, payload, slug) {
+  const origin = getShareOrigin(req);
+  const manifestUrl = `${origin}/shared-projects/${encodeURIComponent(slug)}/project.json`;
+  const publicBaseUrl = String(payload.publicBaseUrl || "").replace(/\/?$/, "/");
+  const shareBase = publicBaseUrl || `${origin}/index.html`;
+  const shareUrl = `${shareBase}#/cloud/${encodeURIComponent(slug)}`;
+  sendJson(res, 200, { ok: true, slug, shareUrl, manifestUrl, accessMode: payload.accessMode || "read-only" });
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${port}`);
 
@@ -101,6 +125,57 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/publish-project/start") {
+    readBody(req, 2 * 1024 * 1024, (body) => {
+      try {
+        const payload = JSON.parse(body || "{}");
+        const slug = safeSlug(payload.slug);
+        const projectRoot = path.join(root, "shared-projects", slug);
+        fs.mkdirSync(projectRoot, { recursive: true });
+        sendJson(res, 200, { ok: true, slug });
+      } catch (error) {
+        sendJson(res, 500, { ok: false, error: error.message || "Could not start upload." });
+      }
+    });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/publish-project/file") {
+    readBody(req, 80 * 1024 * 1024, (body) => {
+      try {
+        const payload = JSON.parse(body || "{}");
+        const slug = safeSlug(payload.slug);
+        const projectRoot = path.join(root, "shared-projects", slug);
+        fs.mkdirSync(projectRoot, { recursive: true });
+        writeProjectFile(projectRoot, payload);
+        sendJson(res, 200, { ok: true, slug, path: safeRelativePath(payload.path) });
+      } catch (error) {
+        sendJson(res, 500, { ok: false, error: error.message || "Could not upload file." });
+      }
+    });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/publish-project/finish") {
+    readBody(req, 80 * 1024 * 1024, (body) => {
+      try {
+        const payload = JSON.parse(body || "{}");
+        const slug = safeSlug(payload.slug || payload.manifest?.slug);
+        const projectRoot = path.join(root, "shared-projects", slug);
+        fs.mkdirSync(projectRoot, { recursive: true });
+        writeProjectFile(projectRoot, {
+          path: "project.json",
+          text: JSON.stringify({ ...(payload.manifest || {}), slug }, null, 2),
+          contentType: "application/json;charset=utf-8"
+        });
+        sendPublishResult(req, res, payload, slug);
+      } catch (error) {
+        sendJson(res, 500, { ok: false, error: error.message || "Could not finish upload." });
+      }
+    });
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/publish-project") {
     readBody(req, 500 * 1024 * 1024, (body) => {
       try {
@@ -109,28 +184,28 @@ const server = http.createServer((req, res) => {
         const projectRoot = path.join(root, "shared-projects", slug);
         fs.mkdirSync(projectRoot, { recursive: true });
 
-        const files = Array.isArray(payload.files) ? payload.files : [];
-        files.forEach((file) => {
-          const relativePath = safeRelativePath(file.path);
-          if (!relativePath) return;
-          const filePath = path.resolve(projectRoot, relativePath);
-          if (!filePath.startsWith(projectRoot + path.sep) && filePath !== projectRoot) return;
-          fs.mkdirSync(path.dirname(filePath), { recursive: true });
-          if (typeof file.dataUrl === "string") {
-            const match = file.dataUrl.match(/^data:([^;,]+)?(?:;charset=[^;,]+)?;base64,(.+)$/);
-            if (!match) throw new Error(`Invalid file data for ${relativePath}.`);
-            fs.writeFileSync(filePath, Buffer.from(match[2], "base64"));
-          } else {
-            fs.writeFileSync(filePath, String(file.text || ""), "utf8");
-          }
-        });
+        if (payload.action === "start") {
+          sendJson(res, 200, { ok: true, slug });
+          return;
+        }
+        if (payload.action === "file") {
+          writeProjectFile(projectRoot, payload);
+          sendJson(res, 200, { ok: true, slug, path: safeRelativePath(payload.path) });
+          return;
+        }
+        if (payload.action === "finish") {
+          writeProjectFile(projectRoot, {
+            path: "project.json",
+            text: JSON.stringify({ ...(payload.manifest || {}), slug }, null, 2),
+            contentType: "application/json;charset=utf-8"
+          });
+          sendPublishResult(req, res, payload, slug);
+          return;
+        }
 
-        const origin = getShareOrigin(req);
-        const manifestUrl = `${origin}/shared-projects/${encodeURIComponent(slug)}/project.json`;
-        const publicBaseUrl = String(payload.publicBaseUrl || "").replace(/\/?$/, "/");
-        const shareBase = publicBaseUrl || `${origin}/index.html`;
-        const shareUrl = `${shareBase}#/cloud/${encodeURIComponent(slug)}`;
-        sendJson(res, 200, { ok: true, slug, shareUrl, manifestUrl, accessMode: payload.accessMode || "read-only" });
+        const files = Array.isArray(payload.files) ? payload.files : [];
+        files.forEach((file) => writeProjectFile(projectRoot, file));
+        sendPublishResult(req, res, payload, slug);
       } catch (error) {
         sendJson(res, 500, { ok: false, error: error.message || "Could not create share link." });
       }
