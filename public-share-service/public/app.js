@@ -5445,9 +5445,9 @@ async function importProjectLink(link) {
     ...image,
     blob: await imageBlobForPackage(image)
   })));
-  const firstId = await copyProjectManifestToLibrary(manifest);
-  window.location.hash = firstId ? `#/items/${encodeURIComponent(firstId)}` : "";
-  window.alert("Project imported from link.");
+  const result = await copyProjectManifestToLibrary(manifest);
+  window.location.hash = result.firstId ? `#/items/${encodeURIComponent(result.firstId)}` : "";
+  window.alert(`Project imported from link.\n\nInventory: ${result.storageName}\nItems: ${result.artifactCount}\nImages: ${result.imageCount}`);
 }
 
 async function importProjectFile(file) {
@@ -5482,8 +5482,8 @@ async function copyPublishedProjectToLibrary() {
       ...image,
       blob: await imageBlobForPackage(image)
     })));
-    const firstId = await copyProjectManifestToLibrary(manifest);
-    window.location.hash = firstId ? `#/items/${encodeURIComponent(firstId)}` : "";
+    const result = await copyProjectManifestToLibrary(manifest);
+    window.location.hash = result.firstId ? `#/items/${encodeURIComponent(result.firstId)}` : "";
     window.alert("Copied to My Library.");
   } catch (error) {
     window.alert(error?.message || String(error));
@@ -5492,7 +5492,13 @@ async function copyPublishedProjectToLibrary() {
 
 async function copyProjectManifestToLibrary(manifest) {
   const localState = await store.getState();
-  const importedStorage = uniqueName(manifest.project?.title || manifest.project?.storageName || manifest.storages?.[0] || "Imported Project", new Set(getAllStorageNamesFromState(localState)));
+  const preferredStorage = normalizeStorageName(manifest.project?.title || manifest.project?.storageName || manifest.storages?.[0] || "Imported Project");
+  const existingNames = new Set(getAllStorageNamesFromState(localState));
+  const hasExistingSameName = existingNames.has(preferredStorage);
+  const sameNameItemCount = localState.artifacts.filter((artifact) => getArtifactStorageName(artifact) === preferredStorage).length;
+  const importedStorage = hasExistingSameName && sameNameItemCount > 0
+    ? uniqueName(preferredStorage, existingNames)
+    : preferredStorage;
   const artifactIdMap = new Map();
   const usedArtifactIds = new Set(localState.artifacts.map((artifact) => artifact.id));
   manifest.artifacts.forEach((artifact) => {
@@ -5579,7 +5585,12 @@ async function copyProjectManifestToLibrary(manifest) {
   state.activeArtifactId = artifacts[0]?.id || null;
   state.selectedIds = state.activeArtifactId ? new Set([state.activeArtifactId]) : new Set();
   render();
-  return state.activeArtifactId;
+  return {
+    firstId: state.activeArtifactId,
+    storageName: importedStorage,
+    artifactCount: artifacts.length,
+    imageCount: images.length
+  };
 }
 
 function getAllStorageNamesFromState(snapshot) {
