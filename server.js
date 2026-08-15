@@ -89,6 +89,17 @@ function writeProjectFile(projectRoot, file) {
   }
 }
 
+function projectManifestExists(slug) {
+  return fs.existsSync(path.join(root, "shared-projects", slug, "project.json"));
+}
+
+function sendSlugConflict(res, slug) {
+  sendJson(res, 409, {
+    ok: false,
+    error: `The link "${slug}" already exists. Change the Link slug and try again.`
+  });
+}
+
 function sendPublishResult(req, res, payload, slug) {
   const origin = getShareOrigin(req);
   const manifestUrl = `${origin}/shared-projects/${encodeURIComponent(slug)}/project.json`;
@@ -130,6 +141,10 @@ const server = http.createServer((req, res) => {
       try {
         const payload = JSON.parse(body || "{}");
         const slug = safeSlug(payload.slug);
+        if (projectManifestExists(slug)) {
+          sendSlugConflict(res, slug);
+          return;
+        }
         const projectRoot = path.join(root, "shared-projects", slug);
         fs.mkdirSync(projectRoot, { recursive: true });
         sendJson(res, 200, { ok: true, slug });
@@ -161,6 +176,10 @@ const server = http.createServer((req, res) => {
       try {
         const payload = JSON.parse(body || "{}");
         const slug = safeSlug(payload.slug || payload.manifest?.slug);
+        if (projectManifestExists(slug)) {
+          sendSlugConflict(res, slug);
+          return;
+        }
         const projectRoot = path.join(root, "shared-projects", slug);
         fs.mkdirSync(projectRoot, { recursive: true });
         writeProjectFile(projectRoot, {
@@ -182,18 +201,27 @@ const server = http.createServer((req, res) => {
         const payload = JSON.parse(body || "{}");
         const slug = safeSlug(payload.slug || payload.manifest?.slug);
         const projectRoot = path.join(root, "shared-projects", slug);
-        fs.mkdirSync(projectRoot, { recursive: true });
 
         if (payload.action === "start") {
+          if (projectManifestExists(slug)) {
+            sendSlugConflict(res, slug);
+            return;
+          }
+          fs.mkdirSync(projectRoot, { recursive: true });
           sendJson(res, 200, { ok: true, slug });
           return;
         }
+        fs.mkdirSync(projectRoot, { recursive: true });
         if (payload.action === "file") {
           writeProjectFile(projectRoot, payload);
           sendJson(res, 200, { ok: true, slug, path: safeRelativePath(payload.path) });
           return;
         }
         if (payload.action === "finish") {
+          if (projectManifestExists(slug)) {
+            sendSlugConflict(res, slug);
+            return;
+          }
           writeProjectFile(projectRoot, {
             path: "project.json",
             text: JSON.stringify({ ...(payload.manifest || {}), slug }, null, 2),
@@ -204,6 +232,10 @@ const server = http.createServer((req, res) => {
         }
 
         const files = Array.isArray(payload.files) ? payload.files : [];
+        if (projectManifestExists(slug)) {
+          sendSlugConflict(res, slug);
+          return;
+        }
         files.forEach((file) => writeProjectFile(projectRoot, file));
         sendPublishResult(req, res, payload, slug);
       } catch (error) {
