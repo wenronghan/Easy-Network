@@ -13,8 +13,11 @@ const PUBLISH_SCOPE_INVENTORY = "inventory";
 const PUBLISH_SCOPE_PROJECT = "project";
 const SHARE_ACCESS_READ_ONLY = "read-only";
 const SHARE_ACCESS_EDITABLE = "editable";
-const SHARE_IMAGE_MAX_DIMENSION = 1600;
-const SHARE_IMAGE_JPEG_QUALITY = 0.78;
+const SHARE_IMAGE_MAX_DIMENSION = 1400;
+const SHARE_IMAGE_MIN_DIMENSION = 720;
+const SHARE_IMAGE_JPEG_QUALITY = 0.72;
+const SHARE_IMAGE_MIN_JPEG_QUALITY = 0.48;
+const SHARE_IMAGE_TARGET_BYTES = 360 * 1024;
 const TIFF_PREVIEW_MAX_DIMENSION = 2400;
 const TIFF_PREVIEW_JPEG_QUALITY = 0.9;
 
@@ -4672,26 +4675,45 @@ async function optimizeImageBlobForShare(blob) {
     bitmap = await createImageBitmap(blob);
     const longestSide = Math.max(bitmap.width, bitmap.height);
     const scale = Math.min(1, SHARE_IMAGE_MAX_DIMENSION / Math.max(1, longestSide));
-    if (scale === 1 && blob.size <= 900 * 1024 && /jpe?g/i.test(blob.type)) return blob;
-    const width = Math.max(1, Math.round(bitmap.width * scale));
-    const height = Math.max(1, Math.round(bitmap.height * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d");
-    if (!context) return blob;
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, width, height);
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
-    context.drawImage(bitmap, 0, 0, width, height);
-    const optimized = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", SHARE_IMAGE_JPEG_QUALITY));
-    return optimized && optimized.size < blob.size ? optimized : blob;
+    if (scale === 1 && blob.size <= SHARE_IMAGE_TARGET_BYTES && /jpe?g/i.test(blob.type)) return blob;
+    let width = Math.max(1, Math.round(bitmap.width * scale));
+    let height = Math.max(1, Math.round(bitmap.height * scale));
+    let quality = SHARE_IMAGE_JPEG_QUALITY;
+    let best = null;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const optimized = await renderBitmapToJpegBlob(bitmap, width, height, quality);
+      if (optimized && (!best || optimized.size < best.size)) best = optimized;
+      if (optimized && optimized.size <= SHARE_IMAGE_TARGET_BYTES) break;
+      if (quality > SHARE_IMAGE_MIN_JPEG_QUALITY) {
+        quality = Math.max(SHARE_IMAGE_MIN_JPEG_QUALITY, quality - 0.08);
+      } else {
+        const currentLongestSide = Math.max(width, height);
+        if (currentLongestSide <= SHARE_IMAGE_MIN_DIMENSION) break;
+        const nextScale = Math.max(SHARE_IMAGE_MIN_DIMENSION / currentLongestSide, 0.84);
+        width = Math.max(1, Math.round(width * nextScale));
+        height = Math.max(1, Math.round(height * nextScale));
+      }
+    }
+    return best && best.size < blob.size ? best : blob;
   } catch (error) {
     return blob;
   } finally {
     bitmap?.close?.();
   }
+}
+
+function renderBitmapToJpegBlob(bitmap, width, height, quality) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) return Promise.resolve(null);
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, width, height);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(bitmap, 0, 0, width, height);
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
 }
 
 function stripImageBlob(image) {
@@ -5061,6 +5083,7 @@ function blobToDataUrl(blob) {
 function postJsonWithUploadProgress(endpoint, payload, onUploadProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    const body = typeof payload === "string" ? payload : JSON.stringify(payload);
     xhr.open("POST", endpoint);
     xhr.setRequestHeader("Content-Type", "application/json;charset=utf-8");
     xhr.upload.addEventListener("progress", (event) => {
@@ -5079,8 +5102,15 @@ function postJsonWithUploadProgress(endpoint, payload, onUploadProgress) {
     });
     xhr.addEventListener("error", () => reject(new Error("Upload failed.")));
     xhr.addEventListener("abort", () => reject(new Error("Upload was canceled.")));
-    xhr.send(JSON.stringify(payload));
+    xhr.send(body);
   });
+}
+
+function formatByteSize(bytes) {
+  const value = Math.max(0, Number(bytes) || 0);
+  if (value < 1024) return `${Math.round(value)} B`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(value < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 }
 
 async function publishProjectToLocalServer(options = {}) {
@@ -5127,18 +5157,21 @@ async function publishProjectToLocalServer(options = {}) {
     notifyProgress(onProgress, 50 + ((index + 1) / Math.max(1, bundle.imageEntries.length)) * 25, "Preparing upload");
   }
   const requestPayload = { slug, accessMode, publicBaseUrl: getPublicBaseUrl(), manifest: bundle.manifest, files };
-  notifyProgress(onProgress, 76, "Uploading");
+  const requestBody = JSON.stringify(requestPayload);
+  const uploadSize = new Blob([requestBody]).size;
+  const uploadSizeLabel = formatByteSize(uploadSize);
+  notifyProgress(onProgress, 76, `Uploading ${uploadSizeLabel}`);
   let uploadResult;
   try {
-    uploadResult = await postJsonWithUploadProgress(publishTarget.endpoint, requestPayload, (loaded, total) => {
+    uploadResult = await postJsonWithUploadProgress(publishTarget.endpoint, requestBody, (loaded, total) => {
       if (total > 0) {
-        notifyProgress(onProgress, 76 + (loaded / total) * 22, "Uploading");
+        notifyProgress(onProgress, 76 + (loaded / total) * 22, `Uploading ${uploadSizeLabel}`);
       } else {
-        notifyProgress(onProgress, 85, "Uploading");
+        notifyProgress(onProgress, 85, `Uploading ${uploadSizeLabel}`);
       }
     });
   } catch (error) {
-    throw new Error("Could not reach the upload service. Use Download File, or try a smaller image set.");
+    throw new Error(`Could not reach the upload service. Prepared upload: ${uploadSizeLabel}. Use Download File, or try fewer images.`);
   }
   const payload = uploadResult.payload;
   if (!uploadResult.ok || !payload?.ok || !payload.manifestUrl) {
