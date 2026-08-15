@@ -1,7 +1,17 @@
 (() => {
   const publicBase = "https://wenronghan.github.io/Easy-Network/";
   const shareService = "https://easy-network-share.wenronghan7.chatgpt.site";
-  const bundleChunks = 8;
+  const bundlePaths = [
+    "app.bundle.js.gz.b64.00",
+    "app.bundle.js.gz.b64.01",
+    "app.bundle.js.gz.b64.02",
+    "app.bundle.js.gz.b64.03a",
+    "app.bundle.js.gz.b64.03b",
+    "app.bundle.js.gz.b64.04",
+    "app.bundle.js.gz.b64.05",
+    "app.bundle.js.gz.b64.06",
+    "app.bundle.js.gz.b64.07",
+  ];
   const expectedLength = 62088;
   localStorage.setItem("easy-network-public-base-url", publicBase);
   localStorage.setItem("easy-network-share-service-url", shareService);
@@ -40,8 +50,7 @@
 
   const loadBundle = async () => {
     ensureLocalStyles();
-    const paths = Array.from({ length: bundleChunks }, (_, index) => `app.bundle.js.gz.b64.${String(index).padStart(2, "0")}`);
-    const packed = (await Promise.all(paths.map(fetchText))).join("").trim();
+    const packed = (await Promise.all(bundlePaths.map(fetchText))).join("").trim();
     if (packed.length !== expectedLength) throw new Error(`Bundle length mismatch: ${packed.length}`);
     const compressed = decodeBase64(packed);
     if (!("DecompressionStream" in window)) throw new Error("This browser cannot decompress the Easy Network bundle.");
