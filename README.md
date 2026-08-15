@@ -1,41 +1,157 @@
 # Easy Network
 
-Easy Network is a browser-based archaeological inventory and similarity network analysis tool. It supports artifact inventory management, custom metadata fields, CSV workflows, and artifact-level similarity network visualization.
+Easy Network is a static, browser-based inventory and network analysis tool. It keeps local editable projects in IndexedDB and can also export projects as portable ZIP packages or read-only published snapshots for GitHub Pages.
 
-## Live site
+## Local Projects
 
-After GitHub Pages is enabled, the public site will be available at:
-
-https://wenronghan.github.io/Easy-Network/
-
-## Technology stack
-
-- HTML
-- CSS
-- JavaScript
-- Node.js local static server
-- IndexedDB and localStorage for browser-side data persistence
-
-## Local use
-
-If Node.js is available, run:
-
-```bash
-node server.js
-```
-
-Then open:
+Open the app normally, for example:
 
 ```text
-http://127.0.0.1:4173/index.html
+https://wenronghan.github.io/Easy-Network/
 ```
 
-The main inventory page is `index.html`. The network analysis workspace is embedded through `network.html`.
+Local projects are editable and saved in the current browser's IndexedDB. Existing data is preserved; this update does not change the IndexedDB schema version.
 
-## GitHub Pages note
+## Export
 
-GitHub Pages hosts the static front-end version. The included `server.js` is for local use and for the local screenshot-saving endpoint. Browser-side features that rely on IndexedDB and localStorage remain available to each visitor in their own browser.
+Use **Export** to choose what to export and where it goes.
 
-## Suggested citation
+Export scope:
 
-Ronghan, W. (2026). *Easy Network: Archaeological artifact inventory and similarity network analysis system* (Version 0.1) [Computer software]. GitHub. https://github.com/wenronghan/Easy-Network
+```text
+This inventory
+Whole project
+```
+
+`This inventory` defaults to the inventory currently being browsed, and the dialog also lets you choose any existing inventory. `Whole project` includes all local inventories plus saved Network data.
+
+Export destination:
+
+```text
+Download File
+Create Link
+```
+
+Link permissions:
+
+```text
+Read-only
+Editable
+```
+
+`Read-only` is the default. Visitors can open the link, browse the inventory/project, copy it into their own library, or export their own copy, but exporting from a read-only cloud link creates a new `copy` link instead of overwriting the original cloud slug. `Editable` links allow visitors to make changes in the browser and publish updates back to the same shared slug.
+
+Use **Download File** to download a portable package:
+
+```text
+project-slug.easy-network.zip
+```
+
+The ZIP contains:
+
+```text
+project.json
+data/artifacts.csv
+images/
+```
+
+`project.json` includes the project snapshot, inventories, fields, artifacts, metadata, custom fields, image ordering, image view state, and network-related local settings. `data/artifacts.csv` is a tabular export of the same artifact dataset for review or reuse. Images are stored as real files inside `images/`, not as local filesystem paths.
+
+Use **Import** to choose an import source:
+
+```text
+Import Local File
+Import Link
+```
+
+`Import Local File` restores a portable ZIP package into the current browser. `Import Link` accepts Easy Network shared project links, published project links, or direct `project.json` URLs, then copies the project into the local editable library. If an inventory name already exists, Easy Network creates names such as `Name Copy` or `Name Copy 2`.
+
+## Published Projects
+
+The old separate **Export Publishable** and **Share Link** top-bar buttons have been folded into **Export**. For manual GitHub Pages publishing, the internal publishable package format is still:
+
+```text
+projects/{project-slug}/project.json
+projects/{project-slug}/data/artifacts.csv
+projects/{project-slug}/images/
+```
+
+Unzip it into the repository so the folder lives under `projects/{project-slug}/`, then publish the repository with GitHub Pages as usual.
+
+Published projects are read-only snapshots. Visitors can browse inventory, images, metadata, filters, sorting, item details, and Network analysis without using their own IndexedDB.
+
+## Project URLs
+
+The default public site URL is:
+
+```text
+https://wenronghan.github.io/Easy-Network/
+```
+
+Published project:
+
+```text
+#/project/{projectSlug}
+```
+
+Published item:
+
+```text
+#/project/{projectSlug}/items/{artifactId}
+```
+
+Published network:
+
+```text
+#/project/{projectSlug}/network
+```
+
+In a published project, use **Copy Project Link** or **Copy Item Link** to copy the full URL.
+
+## Share Links
+
+Click **Create Link** to upload a read-only snapshot to the public Easy Network share service:
+
+```text
+https://easy-network-share.wenronghan7.chatgpt.site/shared-projects/{project-slug}/project.json
+https://easy-network-share.wenronghan7.chatgpt.site/shared-projects/{project-slug}/data/artifacts.csv
+https://easy-network-share.wenronghan7.chatgpt.site/shared-projects/{project-slug}/images/
+```
+
+The generated link is copied automatically and uses the form:
+
+```text
+#/cloud/{projectSlug}?source={projectJsonUrl}
+```
+
+The link includes the saved `project.json` URL, so another browser can load the inventory data and image files from the public share service.
+
+## Copy to My Library
+
+When viewing a published project, click **Copy to My Library** to create an editable local copy in IndexedDB. The copy is independent from the published snapshot; editing it never changes the public project files.
+
+## Import / Export Notes
+
+Image paths inside portable and published packages are relative paths such as:
+
+```text
+images/AD-01/001-photo.jpg
+```
+
+Packages must not depend on local paths such as `C:\Users\...`, `blob:`, or `localhost:` for published access.
+
+## Restoring the Pre-Change Version
+
+This working copy did not contain usable git metadata: `.git` existed but was empty, so no `main` commit SHA, branch, or tag could be created. Before implementation, the editable source files were copied into:
+
+```text
+archive/backup-before-shareable-projects-*
+```
+
+To restore manually, copy the files from that backup folder back to the project root.
+
+## Known Limits
+
+GitHub Pages publishing is still package-based: authors unzip the generated publishable package into the repository and let GitHub Pages serve it. One-click link creation uploads snapshots to `https://easy-network-share.wenronghan7.chatgpt.site`.
+
+ZIP import is intended for Easy Network packages. Exported packages use standard uncompressed ZIP entries; import supports uncompressed entries and browser-supported deflate entries.

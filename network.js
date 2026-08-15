@@ -6,7 +6,10 @@ const DEFAULT_LANGUAGE = "en";
 localStorage.setItem("easy-network-language", DEFAULT_LANGUAGE);
 const DEFAULT_STORAGE_NAME = "Local Archive";
 const LEGACY_DEFAULT_STORAGE_NAMES = new Set(["考古文物项目", "鑰冨彜鏂囩墿椤圭洰"]);
-const IS_EMBEDDED = new URLSearchParams(window.location.search).get("embedded") === "1";
+const NETWORK_URL_PARAMS = new URLSearchParams(window.location.search);
+const IS_EMBEDDED = NETWORK_URL_PARAMS.get("embedded") === "1";
+const PUBLISHED_PROJECT_SLUG = NETWORK_URL_PARAMS.get("project") || "";
+const CLOUD_MANIFEST_URL = NETWORK_URL_PARAMS.get("manifest") || "";
 const NODE_SHAPES = [
   { value: "circle", en: "Circle", zh: "圆形", symbol: "●" },
   { value: "square", en: "Square", zh: "方形", symbol: "■" },
@@ -261,6 +264,7 @@ const state = {
   artifacts: [],
   images: [],
   fields: [],
+  packageNetworkData: null,
   storages: [],
   activeStorageName: "",
   scopeMode: "all",
@@ -568,12 +572,30 @@ function nt(key) {
 
 class ArtifactReader {
   constructor() {
-    this.dbPromise = new Promise((resolve, reject) => {
+    this.publishedSlug = PUBLISHED_PROJECT_SLUG;
+    this.manifestUrl = CLOUD_MANIFEST_URL;
+    this.publishedManifestPromise = null;
+    this.dbPromise = (this.publishedSlug || this.manifestUrl) ? null : new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, 1);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
       request.onupgradeneeded = () => request.transaction.abort();
     });
+  }
+
+  async getPublishedManifest() {
+    if (!this.publishedSlug && !this.manifestUrl) return null;
+    if (!this.publishedManifestPromise) {
+      const projectUrl = this.manifestUrl || `projects/${encodeURIComponent(this.publishedSlug)}/project.json`;
+      const basePath = projectUrl.replace(/[^/]*$/, "");
+      this.publishedManifestPromise = fetch(projectUrl, { cache: "no-cache" })
+        .then((response) => {
+          if (!response.ok) throw new Error(`Published project could not be loaded: ${response.status}`);
+          return response.json();
+        })
+        .then((manifest) => normalizePublishedManifest(manifest, basePath));
+    }
+    return this.publishedManifestPromise;
   }
 
   async getAll(storeName) {
@@ -588,13 +610,44 @@ class ArtifactReader {
   }
 
   async getState() {
+    const manifest = await this.getPublishedManifest();
+    if (manifest) {
+      return {
+        slug: manifest.slug || this.publishedSlug,
+        networkData: manifest.networkData || null,
+        artifacts: manifest.artifacts.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")),
+        fields: manifest.fields.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)),
+        images: manifest.images
+      };
+    }
     const [artifacts, fields, images] = await Promise.all([this.getAll("artifacts"), this.getAll("fields"), this.getAll("images")]);
     return {
+      slug: "",
+      networkData: null,
       artifacts: artifacts.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")),
       fields: fields.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)),
       images
     };
   }
+}
+
+function normalizePublishedManifest(manifest, basePath) {
+  const baseUrl = new URL(basePath, location.href);
+  return {
+    ...manifest,
+    artifacts: (manifest.artifacts || []).map((artifact) => ({
+      ...artifact,
+      metadata: { ...(artifact.metadata || {}) },
+      customFields: { ...(artifact.customFields || {}) },
+      imageIds: [...(artifact.imageIds || [])]
+    })),
+    fields: manifest.fields || [],
+    images: (manifest.images || []).map((image) => {
+      const path = image.path || image.url || "";
+      const url = path && !/^https?:|^blob:|^data:/i.test(path) ? new URL(path, baseUrl).href : path;
+      return { ...image, path, url, viewState: { ...(image.viewState || {}) } };
+    })
+  };
 }
 
 const reader = new ArtifactReader();
@@ -1144,11 +1197,14 @@ async function loadArtifacts() {
     state.artifacts = next.artifacts;
     state.fields = next.fields;
     state.images = next.images;
+    state.projectSlug = next.slug || PUBLISHED_PROJECT_SLUG || "";
+    state.packageNetworkData = next.networkData || null;
     state.storages = getStorages();
   } catch (error) {
     state.artifacts = [];
     state.fields = [];
     state.images = [];
+    state.packageNetworkData = null;
     dom.artifactFieldList.innerHTML = `<p class="quiet-line">${state.language === "en" ? "No readable inventory data yet." : "还没有可读取的文物库数据。"}</p>`;
   }
 }
@@ -2486,7 +2542,6 @@ function showSimilarityMatrix() {
     artifact
   }));
   const matrix = rows.map((rowA, i) => rows.map((rowB, j) => {
-    if (i === j) return { score: 1, reasons: [state.language === "en" ? "same item" : "同一条目"] };
     return compareArtifacts(rowA.artifact, rowB.artifact, selectedFields, includeEmpty, weights);
   }));
   renderSimilarityMatrix(rows, matrix, fields);
@@ -2817,6 +2872,7 @@ function brayCurtisSimilarity(left, right) {
 }
 
 function valueSimilarity(a, b, includeEmpty) {
+  if (isMissingValue(a) || isMissingValue(b)) return 0;
   const left = cleanCell(a).toLowerCase();
   const right = cleanCell(b).toLowerCase();
   if (!left && !right) return includeEmpty ? 1 : 0;
@@ -3103,6 +3159,7 @@ function getPrimaryImage(artifact) {
 }
 
 function getImageUrl(image) {
+  if (image?.url && !image.blob) return image.url;
   if (!image?.blob) return "";
   if (!image._objectUrl) image._objectUrl = URL.createObjectURL(image.blob);
   return image._objectUrl;
@@ -3946,7 +4003,13 @@ function openArtifactFromNode(node) {
     window.parent.postMessage({ type: "easy-network-open-artifact", artifactId: node.artifactId }, "*");
     return;
   }
-  window.location.href = `${window.location.origin}/index.html#/items/${encodeURIComponent(node.artifactId)}`;
+  const cloudSlug = state.projectSlug || PUBLISHED_PROJECT_SLUG || "cloud-project";
+  const hash = CLOUD_MANIFEST_URL
+    ? `#/cloud/${encodeURIComponent(cloudSlug)}/items/${encodeURIComponent(node.artifactId)}?source=${encodeURIComponent(CLOUD_MANIFEST_URL)}`
+    : PUBLISHED_PROJECT_SLUG
+    ? `#/project/${encodeURIComponent(PUBLISHED_PROJECT_SLUG)}/items/${encodeURIComponent(node.artifactId)}`
+    : `#/items/${encodeURIComponent(node.artifactId)}`;
+  window.location.href = `${window.location.origin}/index.html${hash}`;
 }
 
 function renderAll() {
@@ -5216,7 +5279,7 @@ function saveGraph() {
 }
 
 function loadSavedGraph() {
-  const raw = localStorage.getItem(GRAPH_STORAGE_KEY);
+  const raw = state.packageNetworkData?.[GRAPH_STORAGE_KEY] || localStorage.getItem(GRAPH_STORAGE_KEY);
   if (!raw) return;
   try {
     const graph = JSON.parse(raw);
@@ -5226,7 +5289,7 @@ function loadSavedGraph() {
     };
     normalizeGraph();
   } catch {
-    localStorage.removeItem(GRAPH_STORAGE_KEY);
+    if (!state.packageNetworkData?.[GRAPH_STORAGE_KEY]) localStorage.removeItem(GRAPH_STORAGE_KEY);
   }
 }
 

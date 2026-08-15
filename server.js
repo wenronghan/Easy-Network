@@ -1,5 +1,6 @@
 const http = require("http");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const root = path.resolve(__dirname);
@@ -8,7 +9,13 @@ const types = {
   ".html": "text/html;charset=utf-8",
   ".css": "text/css;charset=utf-8",
   ".js": "application/javascript;charset=utf-8",
-  ".png": "image/png"
+  ".json": "application/json;charset=utf-8",
+  ".csv": "text/csv;charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp"
 };
 
 function sendJson(res, status, payload) {
@@ -26,16 +33,52 @@ function safeFileName(name) {
     .slice(0, 120) || "easy-network-screenshot.png";
 }
 
+function safeSlug(value) {
+  return String(value || "easy-network-project")
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 120) || `project-${Date.now().toString(36)}`;
+}
+
+function safeRelativePath(value) {
+  return String(value || "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter((part) => part && part !== "." && part !== "..")
+    .join("/");
+}
+
+function getLanAddress() {
+  const networks = os.networkInterfaces();
+  for (const entries of Object.values(networks)) {
+    for (const entry of entries || []) {
+      if (entry.family === "IPv4" && !entry.internal) return entry.address;
+    }
+  }
+  return "127.0.0.1";
+}
+
+function getShareOrigin(req) {
+  const host = String(req.headers.host || `127.0.0.1:${port}`);
+  if (!/^localhost(?::|$)|^127\./.test(host)) return `http://${host}`;
+  return `http://${getLanAddress()}:${port}`;
+}
+
+function readBody(req, limitBytes, callback) {
+  let body = "";
+  req.on("data", (chunk) => {
+    body += chunk;
+    if (body.length > limitBytes) req.destroy();
+  });
+  req.on("end", () => callback(body));
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${port}`);
 
   if (req.method === "POST" && url.pathname === "/api/save-screenshot") {
-    let body = "";
-    req.on("data", (chunk) => {
-      body += chunk;
-      if (body.length > 80 * 1024 * 1024) req.destroy();
-    });
-    req.on("end", () => {
+    readBody(req, 80 * 1024 * 1024, (body) => {
       try {
         const payload = JSON.parse(body || "{}");
         const dataUrl = String(payload.dataUrl || "");
@@ -53,6 +96,43 @@ const server = http.createServer((req, res) => {
         sendJson(res, 200, { ok: true, path: filePath });
       } catch (error) {
         sendJson(res, 500, { ok: false, error: error.message || "Could not save screenshot." });
+      }
+    });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/publish-project") {
+    readBody(req, 500 * 1024 * 1024, (body) => {
+      try {
+        const payload = JSON.parse(body || "{}");
+        const slug = safeSlug(payload.slug || payload.manifest?.slug);
+        const projectRoot = path.join(root, "shared-projects", slug);
+        fs.mkdirSync(projectRoot, { recursive: true });
+
+        const files = Array.isArray(payload.files) ? payload.files : [];
+        files.forEach((file) => {
+          const relativePath = safeRelativePath(file.path);
+          if (!relativePath) return;
+          const filePath = path.resolve(projectRoot, relativePath);
+          if (!filePath.startsWith(projectRoot + path.sep) && filePath !== projectRoot) return;
+          fs.mkdirSync(path.dirname(filePath), { recursive: true });
+          if (typeof file.dataUrl === "string") {
+            const match = file.dataUrl.match(/^data:([^;,]+)?(?:;charset=[^;,]+)?;base64,(.+)$/);
+            if (!match) throw new Error(`Invalid file data for ${relativePath}.`);
+            fs.writeFileSync(filePath, Buffer.from(match[2], "base64"));
+          } else {
+            fs.writeFileSync(filePath, String(file.text || ""), "utf8");
+          }
+        });
+
+        const origin = getShareOrigin(req);
+        const manifestUrl = `${origin}/shared-projects/${encodeURIComponent(slug)}/project.json`;
+        const publicBaseUrl = String(payload.publicBaseUrl || "").replace(/\/?$/, "/");
+        const shareBase = publicBaseUrl || `${origin}/index.html`;
+        const shareUrl = `${shareBase}#/cloud/${encodeURIComponent(slug)}`;
+        sendJson(res, 200, { ok: true, slug, shareUrl, manifestUrl, accessMode: payload.accessMode || "read-only" });
+      } catch (error) {
+        sendJson(res, 500, { ok: false, error: error.message || "Could not create share link." });
       }
     });
     return;
@@ -91,6 +171,7 @@ server.on("error", (error) => {
   throw error;
 });
 
-server.listen(port, "127.0.0.1", () => {
+server.listen(port, "0.0.0.0", () => {
   console.log(`ArchaeoDesk running at http://127.0.0.1:${port}/`);
+  console.log(`Share links use http://${getLanAddress()}:${port}/ when opened from another device on this network.`);
 });
