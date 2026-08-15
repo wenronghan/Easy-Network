@@ -4973,6 +4973,16 @@ function openExportDialog() {
   accessSelect.append(new Option("Editable", SHARE_ACCESS_EDITABLE));
   accessSelect.value = getPublishedAccessMode() === SHARE_ACCESS_EDITABLE ? SHARE_ACCESS_EDITABLE : SHARE_ACCESS_READ_ONLY;
 
+  const slugLabel = document.createElement("label");
+  slugLabel.className = "field-label";
+  slugLabel.textContent = "Link slug";
+  const slugInput = document.createElement("input");
+  slugInput.className = "input";
+  slugInput.type = "text";
+  slugInput.placeholder = "lute-iconography-copy";
+  const previewLink = document.createElement("p");
+  previewLink.className = "quiet-line";
+
   const linkLabel = document.createElement("label");
   linkLabel.className = "field-label";
   linkLabel.textContent = "Share link";
@@ -5010,15 +5020,41 @@ function openExportDialog() {
   copyButton.textContent = "Copy Link";
   copyButton.hidden = true;
   actions.append(localButton, cloudButton, copyButton);
+  let slugEdited = false;
+
+  function getSuggestedShareSlug(scope = selectedScope, storageName = selectedStorageName, accessMode = accessSelect.value) {
+    return getPublishSlugForAccess(
+      scope === PUBLISH_SCOPE_PROJECT ? PUBLISH_SCOPE_PROJECT : PUBLISH_SCOPE_INVENTORY,
+      scope === PUBLISH_SCOPE_PROJECT ? "" : storageName,
+      accessMode === SHARE_ACCESS_EDITABLE ? SHARE_ACCESS_EDITABLE : SHARE_ACCESS_READ_ONLY
+    );
+  }
+
+  function updateSlugPreview() {
+    const cleanSlug = slugifyProjectName(slugInput.value || getSuggestedShareSlug());
+    previewLink.textContent = `${getPublicBaseUrl()}#/cloud/${cleanSlug || "project-slug"}`;
+  }
+
+  function syncSlugInput(force = false) {
+    if (force || !slugEdited) {
+      slugInput.value = getSuggestedShareSlug();
+    }
+    updateSlugPreview();
+  }
 
   function getSelectedExportOptions() {
     selectedScope = scopeSelect.value === PUBLISH_SCOPE_PROJECT ? PUBLISH_SCOPE_PROJECT : PUBLISH_SCOPE_INVENTORY;
     selectedStorageName = inventorySelect.value || selectedStorageName;
     setPublishScope(selectedScope);
+    const suggestedSlug = getSuggestedShareSlug(selectedScope, selectedStorageName, accessSelect.value);
+    const publishSlug = slugifyProjectName(slugInput.value || suggestedSlug);
+    slugInput.value = publishSlug;
+    updateSlugPreview();
     return {
       scope: selectedScope,
       storageName: selectedScope === PUBLISH_SCOPE_PROJECT ? "" : selectedStorageName,
-      accessMode: accessSelect.value === SHARE_ACCESS_EDITABLE ? SHARE_ACCESS_EDITABLE : SHARE_ACCESS_READ_ONLY
+      accessMode: accessSelect.value === SHARE_ACCESS_EDITABLE ? SHARE_ACCESS_EDITABLE : SHARE_ACCESS_READ_ONLY,
+      slug: publishSlug
     };
   }
 
@@ -5032,6 +5068,7 @@ function openExportDialog() {
     } else if (!linkInput.value && options.scope !== PUBLISH_SCOPE_PROJECT && getProtectedPublishSlug(options.storageName)) {
       feedback.textContent = "This inventory was imported from a read-only snapshot. Creating a link will publish a protected copy instead of overwriting the source.";
     }
+    syncSlugInput(false);
     if (!linkInput.value) {
       linkLabel.hidden = true;
       linkInput.hidden = true;
@@ -5050,9 +5087,26 @@ function openExportDialog() {
     syncExportDialog();
   }
 
-  scopeSelect.addEventListener("change", clearShareLink);
-  inventorySelect.addEventListener("change", clearShareLink);
-  accessSelect.addEventListener("change", clearShareLink);
+  function resetShareSlugAndLink() {
+    slugEdited = false;
+    clearShareLink();
+  }
+
+  scopeSelect.addEventListener("change", resetShareSlugAndLink);
+  inventorySelect.addEventListener("change", resetShareSlugAndLink);
+  accessSelect.addEventListener("change", resetShareSlugAndLink);
+  slugInput.addEventListener("input", () => {
+    slugEdited = true;
+    linkInput.value = "";
+    linkLabel.hidden = true;
+    linkInput.hidden = true;
+    copyButton.hidden = true;
+    updateSlugPreview();
+  });
+  slugInput.addEventListener("blur", () => {
+    slugInput.value = slugifyProjectName(slugInput.value || getSuggestedShareSlug());
+    updateSlugPreview();
+  });
   localButton.addEventListener("click", async () => {
     await exportPortableProject(getSelectedExportOptions());
   });
@@ -5095,7 +5149,7 @@ function openExportDialog() {
     if (linkInput.value) copyTextToClipboard(linkInput.value);
   });
 
-  dialog.append(header, hint, scopeLabel, scopeSelect, inventoryLabel, inventorySelect, accessLabel, accessSelect, linkLabel, linkInput, feedback, progress, actions);
+  dialog.append(header, hint, scopeLabel, scopeSelect, inventoryLabel, inventorySelect, accessLabel, accessSelect, slugLabel, slugInput, previewLink, linkLabel, linkInput, feedback, progress, actions);
   backdrop.append(dialog);
   document.body.append(backdrop);
   syncExportDialog();
@@ -5167,6 +5221,28 @@ function estimateImageUploadBodySize(entry) {
   const pathSize = String(entry?.path || "").length;
   const blobSize = Number(entry?.blob?.size || 0);
   return Math.ceil(blobSize * 1.38) + pathSize + 512;
+}
+
+function getPublishedManifestUrlForSlug(publishTarget, slug) {
+  const safeSlug = encodeURIComponent(slug);
+  const base = publishTarget.serviceBaseUrl || new URL(".", location.href).href;
+  return new URL(`shared-projects/${safeSlug}/project.json`, base.replace(/\/?$/, "/")).href;
+}
+
+async function assertPublishSlugIsAvailable(publishTarget, slug) {
+  const manifestUrl = getPublishedManifestUrlForSlug(publishTarget, slug);
+  let response;
+  try {
+    response = await fetch(manifestUrl, { cache: "no-cache" });
+  } catch (error) {
+    throw new Error("Could not check whether this link already exists. Please try again before uploading.");
+  }
+  if (response.ok) {
+    throw new Error(`The link "${slug}" already exists. Change the Link slug, for example "${slug}-copy", and try again.`);
+  }
+  if (response.status !== 404) {
+    throw new Error(`Could not check whether this link already exists (${response.status}). Please try again before uploading.`);
+  }
 }
 
 async function publishProjectInParts(endpoint, payload, onProgress) {
@@ -5266,7 +5342,10 @@ async function publishProjectToLocalServer(options = {}) {
     ? options.storageName
     : getPublishStorageName(scope);
   const accessMode = options.accessMode === SHARE_ACCESS_EDITABLE ? SHARE_ACCESS_EDITABLE : SHARE_ACCESS_READ_ONLY;
-  const slug = getPublishSlugForAccess(scope, storageName, accessMode);
+  const slug = slugifyProjectName(options.slug || getPublishSlugForAccess(scope, storageName, accessMode));
+  if (!slug) throw new Error("Enter a link slug first.");
+  notifyProgress(onProgress, 2, "Checking link");
+  await assertPublishSlugIsAvailable(publishTarget, slug);
   const bundle = await createProjectPackage({ publishable: true, slug, scope, storageName, accessMode, optimizeImages: true, onProgress });
   const serviceBaseUrl = publishTarget.serviceBaseUrl;
   if (serviceBaseUrl) {
