@@ -48,6 +48,12 @@
     return response.text();
   };
 
+  const loadLocalPatch = () => {
+    const patch = document.createElement("script");
+    patch.src = "github-pages-patch.js?v=20260815-selfhost";
+    document.body.append(patch);
+  };
+
   const loadBundle = async () => {
     ensureLocalStyles();
     const packed = (await Promise.all(bundlePaths.map(fetchText))).join("").trim();
@@ -59,6 +65,7 @@
     const script = document.createElement("script");
     script.text = `${source}\n//# sourceURL=easy-network-app.bundle.js`;
     document.head.append(script);
+    loadLocalPatch();
   };
 
   loadBundle().catch(fail);
