@@ -28,7 +28,7 @@
           </button>
           <button id="newProjectBtn" class="button subtle" type="button" hidden>新建项目</button>
           <label class="button primary" for="uploadCreateInput">上传图片建条目</label>
-          <input id="uploadCreateInput" class="visually-hidden" type="file" accept="image/*" multiple />
+          <input id="uploadCreateInput" class="visually-hidden" type="file" accept="image/*,.tif,.tiff" multiple />
           <button id="exportProjectBtn" class="button subtle" type="button">Export</button>
           <button id="importProjectBtn" class="button subtle" type="button">Import</button>
           <input id="importProjectInput" class="visually-hidden" type="file" accept=".zip,.easy-network.zip,application/zip" />
@@ -147,7 +147,7 @@
                 </div>
                 <div id="thumbnailStrip" class="thumbnail-strip"></div>
                 <label class="button full" for="addImagesInput">向当前条目上传图片</label>
-                <input id="addImagesInput" class="visually-hidden" type="file" accept="image/*" multiple />
+                <input id="addImagesInput" class="visually-hidden" type="file" accept="image/*,.tif,.tiff" multiple />
               </div>
 
               <div class="detail-fields-column">
@@ -287,6 +287,7 @@
       </div>
     </div>
 
-    <script src="app.js?v=20260815-upload-progress"></script>
+    <script src="utif.min.js?v=20260815-tiff-support"></script>
+    <script src="app.js?v=20260815-tiff-support"></script>
   </body>
 </html>

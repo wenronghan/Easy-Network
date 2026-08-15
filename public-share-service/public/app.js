@@ -15,6 +15,8 @@ const SHARE_ACCESS_READ_ONLY = "read-only";
 const SHARE_ACCESS_EDITABLE = "editable";
 const SHARE_IMAGE_MAX_DIMENSION = 1600;
 const SHARE_IMAGE_JPEG_QUALITY = 0.78;
+const TIFF_PREVIEW_MAX_DIMENSION = 2400;
+const TIFF_PREVIEW_JPEG_QUALITY = 0.9;
 
 const SYSTEM_FIELDS = [
   { id: "system-id", label: "ID", type: "text", visibleInList: true, isSystemField: true },
@@ -200,6 +202,7 @@ const state = {
   expandedOpen: false,
   expandedTab: "image",
   objectUrls: new Map(),
+  tiffConversions: new Set(),
   filters: {
     search: "",
     fieldId: "all",
@@ -527,6 +530,10 @@ class IndexedArtifactStore {
 
   async addImages(artifactId, files) {
     if (!files.length) return [];
+    const preparedFiles = [];
+    for (const file of Array.from(files)) {
+      preparedFiles.push(await prepareImageFileForStorage(file));
+    }
     const created = [];
     await this.tx(["artifacts", "images"], "readwrite", ({ artifacts, images }) => {
       const artifactRequest = artifacts.get(artifactId);
@@ -534,7 +541,7 @@ class IndexedArtifactStore {
         const artifact = artifactRequest.result;
         if (!artifact) return;
         const existingCount = artifact.imageIds.length;
-        Array.from(files).forEach((file, index) => {
+        preparedFiles.forEach((file, index) => {
           const image = {
             id: createId("IMG"),
             artifactId,
@@ -549,7 +556,7 @@ class IndexedArtifactStore {
           images.put(image);
           created.push(image);
         });
-        const paths = Array.from(files).map((file) => `local/${artifactId}/${file.name}`);
+        const paths = preparedFiles.map((file) => `local/${artifactId}/${file.name}`);
         artifact.metadata = {
           ...(artifact.metadata || {}),
           "Image Path": [artifact.metadata?.["Image Path"], ...paths].filter(Boolean).join("; ")
@@ -677,6 +684,22 @@ class IndexedArtifactStore {
         const image = request.result;
         if (!image) return;
         store.put({ ...image, viewState: { ...image.viewState, ...viewState } });
+      };
+    });
+  }
+
+  async updateImageBlob(imageId, blob, filename) {
+    await this.tx("images", "readwrite", (store) => {
+      const request = store.get(imageId);
+      request.onsuccess = () => {
+        const image = request.result;
+        if (!image) return;
+        store.put({
+          ...image,
+          blob,
+          filename: filename || image.filename,
+          storageKey: image.storageKey ? image.storageKey.replace(/[^/]+$/, filename || image.filename) : image.storageKey
+        });
       };
     });
   }
@@ -4325,10 +4348,43 @@ function getActiveImage() {
 function getObjectUrl(image) {
   if (image.url && !image.blob) return image.url;
   if (!image.blob) return "";
+  ensureTiffImageConverted(image);
   if (state.objectUrls.has(image.id)) return state.objectUrls.get(image.id);
   const url = URL.createObjectURL(image.blob);
   state.objectUrls.set(image.id, url);
   return url;
+}
+
+function isTiffImageRecord(image) {
+  return isTiffFile({
+    name: image?.filename || image?.storageKey || "",
+    type: image?.blob?.type || ""
+  });
+}
+
+function ensureTiffImageConverted(image) {
+  if (!image?.id || !image.blob || !isTiffImageRecord(image) || state.tiffConversions.has(image.id)) return;
+  state.tiffConversions.add(image.id);
+  convertStoredTiffImage(image).catch((error) => {
+    console.warn("Could not convert TIFF image", error);
+    state.tiffConversions.delete(image.id);
+  });
+}
+
+async function convertStoredTiffImage(image) {
+  const sourceFile = image.blob instanceof File
+    ? image.blob
+    : new File([image.blob], image.filename || `${image.id}.tif`, { type: image.blob.type || "image/tiff" });
+  const converted = await convertTiffFileToJpeg(sourceFile);
+  const existingUrl = state.objectUrls.get(image.id);
+  if (existingUrl) URL.revokeObjectURL(existingUrl);
+  state.objectUrls.delete(image.id);
+  image.blob = converted;
+  image.filename = converted.name;
+  if (image.storageKey) image.storageKey = image.storageKey.replace(/[^/]+$/, converted.name);
+  await store.updateImageBlob(image.id, converted, converted.name);
+  await refreshState();
+  render();
 }
 
 function normalize(value) {
@@ -4513,6 +4569,59 @@ function notifyProgress(callback, percent, label = "Working") {
   });
 }
 
+function isTiffFile(file) {
+  return /^image\/tiff$/i.test(file?.type || "") || /\.tiff?$/i.test(file?.name || "");
+}
+
+function filenameWithExtension(name, extension) {
+  const base = String(name || "image").replace(/\.[^.]*$/, "") || "image";
+  return `${base}.${extension.replace(/^\./, "")}`;
+}
+
+async function prepareImageFileForStorage(file) {
+  if (!isTiffFile(file)) return file;
+  return convertTiffFileToJpeg(file);
+}
+
+async function convertTiffFileToJpeg(file) {
+  if (!window.UTIF) {
+    throw new Error("TIFF images need the TIFF decoder to finish loading. Refresh the page and try again.");
+  }
+  const buffer = await file.arrayBuffer();
+  const pages = window.UTIF.decode(buffer);
+  const page = pages?.[0];
+  if (!page) throw new Error(`Could not read TIFF image: ${file.name}`);
+  window.UTIF.decodeImage(buffer, page);
+  const width = page.width || page.t256?.[0];
+  const height = page.height || page.t257?.[0];
+  if (!width || !height) throw new Error(`Could not read TIFF size: ${file.name}`);
+  const rgba = window.UTIF.toRGBA8(page);
+  const sourceCanvas = document.createElement("canvas");
+  sourceCanvas.width = width;
+  sourceCanvas.height = height;
+  const sourceContext = sourceCanvas.getContext("2d");
+  if (!sourceContext) throw new Error(`Could not convert TIFF image: ${file.name}`);
+  sourceContext.putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0);
+  const longestSide = Math.max(width, height);
+  const scale = Math.min(1, TIFF_PREVIEW_MAX_DIMENSION / Math.max(1, longestSide));
+  const targetCanvas = document.createElement("canvas");
+  targetCanvas.width = Math.max(1, Math.round(width * scale));
+  targetCanvas.height = Math.max(1, Math.round(height * scale));
+  const targetContext = targetCanvas.getContext("2d");
+  if (!targetContext) throw new Error(`Could not convert TIFF image: ${file.name}`);
+  targetContext.fillStyle = "#ffffff";
+  targetContext.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
+  targetContext.imageSmoothingEnabled = true;
+  targetContext.imageSmoothingQuality = "high";
+  targetContext.drawImage(sourceCanvas, 0, 0, targetCanvas.width, targetCanvas.height);
+  const blob = await new Promise((resolve) => targetCanvas.toBlob(resolve, "image/jpeg", TIFF_PREVIEW_JPEG_QUALITY));
+  if (!blob) throw new Error(`Could not convert TIFF image: ${file.name}`);
+  return new File([blob], filenameWithExtension(file.name, "jpg"), {
+    type: "image/jpeg",
+    lastModified: file.lastModified || Date.now()
+  });
+}
+
 function uniqueName(baseName, existingNames) {
   const base = cleanCell(baseName) || "Imported Project";
   if (!existingNames.has(base)) return base;
@@ -4530,12 +4639,19 @@ async function blobToBytes(blob) {
 }
 
 async function imageBlobForPackage(image) {
-  if (image?.blob) return image.blob;
+  let blob = image?.blob || null;
   const url = image?.url || image?.path;
-  if (!url) return new Blob([]);
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Image failed to load: ${url}`);
-  return response.blob();
+  if (!blob && url) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Image failed to load: ${url}`);
+    blob = await response.blob();
+  }
+  if (!blob) return new Blob([]);
+  if (!isTiffFile({ name: image?.filename || image?.storageKey || url || "", type: blob.type || "" })) return blob;
+  const sourceFile = blob instanceof File
+    ? blob
+    : new File([blob], image?.filename || `${image?.id || "image"}.tif`, { type: blob.type || "image/tiff" });
+  return convertTiffFileToJpeg(sourceFile);
 }
 
 async function optimizeImageBlobForShare(blob) {
@@ -4595,11 +4711,13 @@ async function createProjectPackage(options = {}) {
   const images = [];
   for (let imageIndex = 0; imageIndex < sourceImages.length; imageIndex += 1) {
     const image = sourceImages[imageIndex];
-    const ext = image.filename?.includes(".") ? image.filename.slice(image.filename.lastIndexOf(".")) : "";
-    const filename = sanitizePackagePathPart(image.filename || `${image.id}${ext}`, `${image.id}${ext || ".bin"}`);
-    const path = `images/${sanitizePackagePathPart(image.artifactId, "artifact")}/${String((image.sortOrder || 0) + 1).padStart(3, "0")}-${filename}`;
     const originalBlob = await imageBlobForPackage(image);
+    const packageName = originalBlob instanceof File ? originalBlob.name : image.filename;
     const blob = options.optimizeImages ? await optimizeImageBlobForShare(originalBlob) : originalBlob;
+    const sourceName = blob instanceof File ? blob.name : packageName;
+    const ext = sourceName?.includes(".") ? sourceName.slice(sourceName.lastIndexOf(".")) : "";
+    const filename = sanitizePackagePathPart(sourceName || `${image.id}${ext}`, `${image.id}${ext || ".bin"}`);
+    const path = `images/${sanitizePackagePathPart(image.artifactId, "artifact")}/${String((image.sortOrder || 0) + 1).padStart(3, "0")}-${filename}`;
     imageEntries.push({ path, blob });
     images.push({
       ...stripImageBlob(image),
