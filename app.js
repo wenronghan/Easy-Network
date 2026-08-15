@@ -4539,12 +4539,12 @@ function getShareServiceBaseUrl() {
 }
 
 function getPublishEndpointConfig() {
+  const isLocal = /^(localhost|127\.|0\.0\.0\.0$)/.test(location.hostname);
+  if (isLocal) return { endpoint: "api/publish-project", serviceBaseUrl: "" };
   const serviceBaseUrl = getShareServiceBaseUrl();
   if (serviceBaseUrl) {
     return { endpoint: `${serviceBaseUrl}/api/publish-project`, serviceBaseUrl };
   }
-  const isLocal = /^(localhost|127\.|0\.0\.0\.0$)/.test(location.hostname);
-  if (isLocal) return { endpoint: "api/publish-project", serviceBaseUrl: "" };
   return { endpoint: "", serviceBaseUrl: "" };
 }
 
@@ -5106,11 +5106,121 @@ function postJsonWithUploadProgress(endpoint, payload, onUploadProgress) {
   });
 }
 
+function publishEndpointPart(endpoint, part) {
+  return String(endpoint || "");
+}
+
+function jsonPayloadSize(payload) {
+  const body = typeof payload === "string" ? payload : JSON.stringify(payload);
+  return new Blob([body]).size;
+}
+
 function formatByteSize(bytes) {
   const value = Math.max(0, Number(bytes) || 0);
   if (value < 1024) return `${Math.round(value)} B`;
   if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
   return `${(value / (1024 * 1024)).toFixed(value < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
+
+async function postPublishJson(endpoint, payload, onUploadProgress, fallbackError = "Could not create a share link.") {
+  const result = await postJsonWithUploadProgress(endpoint, payload, onUploadProgress);
+  if (!result.ok || result.payload?.ok === false) {
+    const error = new Error(result.payload?.error || fallbackError);
+    error.status = result.status;
+    throw error;
+  }
+  return result.payload || {};
+}
+
+function estimateImageUploadBodySize(entry) {
+  const pathSize = String(entry?.path || "").length;
+  const blobSize = Number(entry?.blob?.size || 0);
+  return Math.ceil(blobSize * 1.38) + pathSize + 512;
+}
+
+async function publishProjectInParts(endpoint, payload, onProgress) {
+  const { slug, accessMode, publicBaseUrl, manifest, csvText, imageEntries } = payload;
+  const startPayload = { slug, accessMode, publicBaseUrl };
+  const csvPayload = {
+    slug,
+    path: "data/artifacts.csv",
+    text: `\uFEFF${csvText}`,
+    contentType: "text/csv;charset=utf-8"
+  };
+  const finishPayload = { slug, accessMode, publicBaseUrl, manifest };
+  const totalEstimate = [
+    jsonPayloadSize(startPayload),
+    jsonPayloadSize(csvPayload),
+    jsonPayloadSize(finishPayload),
+    ...imageEntries.map(estimateImageUploadBodySize)
+  ].reduce((sum, value) => sum + value, 0);
+  const uploadLabel = `Uploading ${formatByteSize(totalEstimate)}`;
+  let completedBytes = 0;
+
+  const uploadJson = async (part, body, label) => {
+    const payload = { action: part, ...body };
+    const bodySize = jsonPayloadSize(payload);
+    const result = await postPublishJson(publishEndpointPart(endpoint, part), payload, (loaded, total) => {
+      const currentSize = total || bodySize;
+      const uploaded = Math.min(currentSize, Math.max(0, loaded || 0));
+      const fraction = Math.min(1, (completedBytes + uploaded) / Math.max(totalEstimate, completedBytes + currentSize, 1));
+      notifyProgress(onProgress, 76 + fraction * 22, label || uploadLabel);
+    });
+    completedBytes += bodySize;
+    return result;
+  };
+
+  notifyProgress(onProgress, 76, uploadLabel);
+  await uploadJson("start", startPayload, "Starting upload");
+  await uploadJson("file", csvPayload, "Uploading data");
+
+  for (let index = 0; index < imageEntries.length; index += 1) {
+    const entry = imageEntries[index];
+    const dataUrl = await blobToDataUrl(entry.blob);
+    await uploadJson("file", {
+      slug,
+      path: entry.path,
+      dataUrl,
+      contentType: entry.blob.type || "application/octet-stream"
+    }, `Uploading image ${index + 1}/${imageEntries.length}`);
+  }
+
+  notifyProgress(onProgress, 99, "Finalizing");
+  return uploadJson("finish", finishPayload, "Finalizing");
+}
+
+async function publishProjectLegacy(endpoint, payload, onProgress) {
+  const { slug, accessMode, publicBaseUrl, manifest, csvText, imageEntries } = payload;
+  const files = [
+    {
+      path: "project.json",
+      text: JSON.stringify(manifest, null, 2),
+      contentType: "application/json;charset=utf-8"
+    },
+    {
+      path: "data/artifacts.csv",
+      text: `\uFEFF${csvText}`,
+      contentType: "text/csv;charset=utf-8"
+    }
+  ];
+  for (let index = 0; index < imageEntries.length; index += 1) {
+    const entry = imageEntries[index];
+    files.push({
+      path: entry.path,
+      dataUrl: await blobToDataUrl(entry.blob),
+      contentType: entry.blob.type || "application/octet-stream"
+    });
+    notifyProgress(onProgress, 50 + ((index + 1) / Math.max(1, imageEntries.length)) * 25, "Preparing upload");
+  }
+  const requestBody = JSON.stringify({ slug, accessMode, publicBaseUrl, manifest, files });
+  const uploadSizeLabel = formatByteSize(jsonPayloadSize(requestBody));
+  return postPublishJson(endpoint, requestBody, (loaded, total) => {
+    if (total > 0) {
+      notifyProgress(onProgress, 76 + (loaded / total) * 22, `Uploading ${uploadSizeLabel}`);
+    } else {
+      notifyProgress(onProgress, 85, `Uploading ${uploadSizeLabel}`);
+    }
+  });
 }
 
 async function publishProjectToLocalServer(options = {}) {
@@ -5135,50 +5245,33 @@ async function publishProjectToLocalServer(options = {}) {
       url: new URL(image.path || image.url || "", projectBaseUrl).href
     }));
   }
-  const files = [
-    {
-      path: "project.json",
-      text: JSON.stringify(bundle.manifest, null, 2),
-      contentType: "application/json;charset=utf-8"
-    },
-    {
-      path: "data/artifacts.csv",
-      text: `\uFEFF${bundle.csvText}`,
-      contentType: "text/csv;charset=utf-8"
-    }
-  ];
-  for (let index = 0; index < bundle.imageEntries.length; index += 1) {
-    const entry = bundle.imageEntries[index];
-    files.push({
-      path: entry.path,
-      dataUrl: await blobToDataUrl(entry.blob),
-      contentType: entry.blob.type || "application/octet-stream"
-    });
-    notifyProgress(onProgress, 50 + ((index + 1) / Math.max(1, bundle.imageEntries.length)) * 25, "Preparing upload");
-  }
-  const requestPayload = { slug, accessMode, publicBaseUrl: getPublicBaseUrl(), manifest: bundle.manifest, files };
-  const requestBody = JSON.stringify(requestPayload);
-  const uploadSize = new Blob([requestBody]).size;
-  const uploadSizeLabel = formatByteSize(uploadSize);
-  notifyProgress(onProgress, 76, `Uploading ${uploadSizeLabel}`);
+  const requestPayload = {
+    slug,
+    accessMode,
+    publicBaseUrl: getPublicBaseUrl(),
+    manifest: bundle.manifest,
+    csvText: bundle.csvText,
+    imageEntries: bundle.imageEntries
+  };
   let uploadResult;
   try {
-    uploadResult = await postJsonWithUploadProgress(publishTarget.endpoint, requestBody, (loaded, total) => {
-      if (total > 0) {
-        notifyProgress(onProgress, 76 + (loaded / total) * 22, `Uploading ${uploadSizeLabel}`);
-      } else {
-        notifyProgress(onProgress, 85, `Uploading ${uploadSizeLabel}`);
-      }
-    });
+    uploadResult = await publishProjectInParts(publishTarget.endpoint, requestPayload, onProgress);
   } catch (error) {
-    throw new Error(`Could not reach the upload service. Prepared upload: ${uploadSizeLabel}. Use Download File, or try fewer images.`);
+    if (error?.status === 404 || error?.status === 405) {
+      try {
+        uploadResult = await publishProjectLegacy(publishTarget.endpoint, requestPayload, onProgress);
+      } catch (legacyError) {
+        throw new Error("The upload service has not received the large-upload update yet. Download File still works; Create Link will work after the service is updated.");
+      }
+    } else {
+      throw new Error(error?.message || "Could not reach the upload service. Please try again.");
+    }
   }
-  const payload = uploadResult.payload;
-  if (!uploadResult.ok || !payload?.ok || !payload.manifestUrl) {
-    throw new Error(payload?.error || "Could not create a share link. Please try again.");
+  if (!uploadResult?.ok || !uploadResult.manifestUrl) {
+    throw new Error(uploadResult?.error || "Could not create a share link. Please try again.");
   }
   notifyProgress(onProgress, 100, "Done");
-  return getCloudProjectShareLink(payload.slug || slug, payload.manifestUrl);
+  return getCloudProjectShareLink(uploadResult.slug || slug, uploadResult.manifestUrl);
 }
 
 async function copyTextToClipboard(text) {
