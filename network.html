@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Easy Network Analysis</title>
-    <link rel="stylesheet" href="https://easy-network-share.wenronghan7.chatgpt.site/styles.css?v=20260815-github-share" />
-    <link rel="stylesheet" href="https://easy-network-share.wenronghan7.chatgpt.site/network.css?v=20260815-github-share" />
+    <link rel="stylesheet" href="styles.css?v=20260815-sim-missing-gh" />
+    <link rel="stylesheet" href="network.css?v=20260815-sim-missing-gh" />
   </head>
   <body class="network-page">
     <div class="network-shell">
@@ -460,8 +460,46 @@
 
     <script>
       localStorage.setItem("easy-network-public-base-url", "https://wenronghan.github.io/Easy-Network/");
-      localStorage.setItem("easy-network-share-service-url", "https://easy-network-share.wenronghan7.chatgpt.site");
     </script>
-    <script src="https://easy-network-share.wenronghan7.chatgpt.site/network.js?v=20260815-github-share"></script>
+    <script src="network.js?v=20260815-sim-missing-gh"></script>
+    <script>
+      {
+        const originalValueSimilarity = valueSimilarity;
+        const originalShowSimilarityMatrix = showSimilarityMatrix;
+
+        valueSimilarity = function patchedValueSimilarity(a, b, includeEmpty) {
+          if (isMissingValue(a) || isMissingValue(b)) return 0;
+          return originalValueSimilarity(a, b, includeEmpty);
+        };
+
+        showSimilarityMatrix = function patchedShowSimilarityMatrix() {
+          if (dom.analysisTypeSelect.value === "site") {
+            showGraphSimilarityMatrix();
+            return;
+          }
+          const selectedFields = getSelectedFieldCheckboxes().map((input) => input.value);
+          if (!selectedFields.length) {
+            window.alert(state.language === "en" ? "Select at least one field to compare before opening the matrix." : "打开矩阵前请至少选择一个用于比较的字段。");
+            return;
+          }
+          const scopeArtifacts = getArtifactNetworkArtifacts(selectedFields);
+          const includeEmpty = dom.includeEmptyFields.checked;
+          const weights = getSelectedFieldWeights();
+          const fields = selectedFields.map((id) => state.fields.find((field) => field.id === id)).filter(Boolean);
+          const rows = scopeArtifacts.map((artifact) => ({
+            id: artifact.id,
+            label: artifact.metadata?.Title || artifact.title || artifact.id,
+            artifact
+          }));
+          const matrix = rows.map((rowA) => rows.map((rowB) => (
+            compareArtifacts(rowA.artifact, rowB.artifact, selectedFields, includeEmpty, weights)
+          )));
+          renderSimilarityMatrix(rows, matrix, fields);
+        };
+
+        dom.showSimilarityMatrixBtn?.removeEventListener("click", originalShowSimilarityMatrix);
+        dom.showSimilarityMatrixBtn?.addEventListener("click", showSimilarityMatrix);
+      }
+    </script>
   </body>
 </html>
