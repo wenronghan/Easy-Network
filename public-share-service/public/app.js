@@ -3492,8 +3492,12 @@ function createArtifactTable(artifacts, storageOverride = "") {
       th.append(indicator);
     }
     th.title = state.language === "en" ? "Click to sort by this field. Right click to choose visible fields." : "点击按此字段排序，右键选择显示字段";
-    th.addEventListener("click", () => {
-      if (state.suppressColumnClick) return;
+    th.addEventListener("click", (event) => {
+      if (state.suppressColumnClick) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       toggleHeaderSort(field.id);
     });
     th.addEventListener("contextmenu", (event) => openColumnMenu(event));
@@ -3521,7 +3525,20 @@ function createArtifactTable(artifacts, storageOverride = "") {
 }
 
 function bindListColumnDrag(th, field, storageName) {
+  const suppressNextColumnClick = () => {
+    state.suppressColumnClick = true;
+    window.setTimeout(() => {
+      state.suppressColumnClick = false;
+    }, 260);
+  };
+  const stopSurfaceSelection = (event) => {
+    event.stopPropagation();
+  };
+  th.addEventListener("pointerdown", stopSurfaceSelection);
+  th.addEventListener("mousedown", stopSurfaceSelection);
   th.addEventListener("dragstart", (event) => {
+    event.stopPropagation();
+    suppressNextColumnClick();
     state.draggedColumn = { fieldId: field.id, storageName };
     event.dataTransfer?.setData("text/plain", field.id);
     if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
@@ -3530,6 +3547,7 @@ function bindListColumnDrag(th, field, storageName) {
   th.addEventListener("dragover", (event) => {
     if (!state.draggedColumn || state.draggedColumn.storageName !== storageName || state.draggedColumn.fieldId === field.id) return;
     event.preventDefault();
+    event.stopPropagation();
     if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
     th.classList.add("column-drag-over");
   });
@@ -3539,19 +3557,19 @@ function bindListColumnDrag(th, field, storageName) {
   th.addEventListener("drop", (event) => {
     if (!state.draggedColumn || state.draggedColumn.storageName !== storageName) return;
     event.preventDefault();
+    event.stopPropagation();
     th.classList.remove("column-drag-over");
     const sourceFieldId = event.dataTransfer?.getData("text/plain") || state.draggedColumn.fieldId;
-    state.suppressColumnClick = true;
-    window.setTimeout(() => {
-      state.suppressColumnClick = false;
-    }, 120);
+    suppressNextColumnClick();
     moveListColumn(storageName, sourceFieldId, field.id);
   });
-  th.addEventListener("dragend", () => {
+  th.addEventListener("dragend", (event) => {
+    event.stopPropagation();
     state.draggedColumn = null;
     document.querySelectorAll(".column-dragging, .column-drag-over").forEach((element) => {
       element.classList.remove("column-dragging", "column-drag-over");
     });
+    suppressNextColumnClick();
   });
 }
 
@@ -3791,7 +3809,7 @@ function selectArtifact(id, event = {}) {
 
 function beginBoxSelect(event) {
   if (event.button !== 0) return;
-  if (event.target.closest("button,input,textarea,select,.artifact-card,.artifact-row,.context-menu")) return;
+  if (event.target.closest("button,input,textarea,select,.artifact-card,.artifact-row,.artifact-table th,.context-menu")) return;
   const start = { x: event.clientX, y: event.clientY };
   const surfaceRect = dom.collectionSurface.getBoundingClientRect();
   dom.selectionBox.classList.remove("hidden");
