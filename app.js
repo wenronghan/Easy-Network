@@ -22,7 +22,9 @@ const SHARE_IMAGE_TARGET_BYTES = 360 * 1024;
 const TIFF_PREVIEW_MAX_DIMENSION = 2400;
 const TIFF_PREVIEW_JPEG_QUALITY = 0.9;
 const GRID_CARD_FIELD_STORAGE_KEY = "easy-network-grid-card-field";
+const GRID_CARD_FOOTER_FIELD_STORAGE_KEY = "easy-network-grid-card-footer-field";
 const GRID_CARD_FIELD_NONE = "__none__";
+const READONLY_FIELD_VISIBILITY_STORAGE_KEY = "easy-network-readonly-field-visibility-v1";
 
 const SYSTEM_FIELDS = [
   { id: "system-id", label: "ID", type: "text", visibleInList: true, isSystemField: true },
@@ -93,6 +95,7 @@ const dom = {
   gridViewBtn: document.querySelector("#gridViewBtn"),
   listViewBtn: document.querySelector("#listViewBtn"),
   gridCardFieldSelect: document.querySelector("#gridCardFieldSelect"),
+  gridCardFooterFieldSelect: document.querySelector("#gridCardFooterFieldSelect"),
   sortToggleBtn: document.querySelector("#sortToggleBtn"),
   storageViewSelect: document.querySelector("#storageViewSelect"),
   storageBreadcrumb: document.querySelector("#storageBreadcrumb"),
@@ -174,6 +177,8 @@ const state = {
   fields: [],
   viewMode: "grid",
   gridCardFieldId: localStorage.getItem(GRID_CARD_FIELD_STORAGE_KEY) || "",
+  gridCardFooterFieldId: localStorage.getItem(GRID_CARD_FOOTER_FIELD_STORAGE_KEY) || "system-id",
+  fieldVisibilityOverrides: readFieldVisibilityOverrides(),
   selectedIds: new Set(),
   activeArtifactId: null,
   activeImageId: null,
@@ -814,6 +819,48 @@ function ensureEditable(message) {
   return false;
 }
 
+function readFieldVisibilityOverrides() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(READONLY_FIELD_VISIBILITY_STORAGE_KEY) || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function saveFieldVisibilityOverrides() {
+  localStorage.setItem(READONLY_FIELD_VISIBILITY_STORAGE_KEY, JSON.stringify(state.fieldVisibilityOverrides || {}));
+}
+
+function getFieldVisibilityOverrideKey(field) {
+  const projectKey = state.publishedSlug || state.project?.id || state.project?.title || "local";
+  return `${projectKey}:${field.id}`;
+}
+
+function getFieldVisibleInList(field) {
+  if (!field) return false;
+  const overrideKey = getFieldVisibilityOverrideKey(field);
+  if (isReadOnlyMode() && Object.prototype.hasOwnProperty.call(state.fieldVisibilityOverrides, overrideKey)) {
+    return Boolean(state.fieldVisibilityOverrides[overrideKey]);
+  }
+  return Boolean(field.visibleInList);
+}
+
+async function setFieldVisibleInList(field, visible) {
+  if (!field) return;
+  if (isReadOnlyMode()) {
+    state.fieldVisibilityOverrides[getFieldVisibilityOverrideKey(field)] = Boolean(visible);
+    saveFieldVisibilityOverrides();
+    renderFieldList();
+    renderCollection();
+    return;
+  }
+  await pushUndoSnapshot();
+  await store.updateField(field.id, { visibleInList: Boolean(visible) });
+  await refreshState();
+  render();
+}
+
 function createId(prefix) {
   if (crypto.randomUUID) return `${prefix}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
   return `${prefix}-${Math.random().toString(16).slice(2, 10).toUpperCase()}`;
@@ -1311,6 +1358,11 @@ function bindEvents() {
     localStorage.setItem(GRID_CARD_FIELD_STORAGE_KEY, state.gridCardFieldId);
     renderCollection();
   });
+  dom.gridCardFooterFieldSelect?.addEventListener("change", () => {
+    state.gridCardFooterFieldId = dom.gridCardFooterFieldSelect.value;
+    localStorage.setItem(GRID_CARD_FOOTER_FIELD_STORAGE_KEY, state.gridCardFooterFieldId);
+    renderCollection();
+  });
   dom.sortToggleBtn.addEventListener("click", () => {
     state.sortPanelOpen = !state.sortPanelOpen;
     renderSortControls();
@@ -1806,6 +1858,7 @@ function setViewMode(mode) {
   dom.listView.classList.toggle("hidden", mode !== "list");
   dom.listControls.classList.toggle("hidden", mode !== "list");
   dom.gridCardFieldSelect?.classList.toggle("hidden", mode !== "grid");
+  dom.gridCardFooterFieldSelect?.classList.toggle("hidden", mode !== "grid");
   renderCollection();
 }
 
@@ -1921,7 +1974,7 @@ function renderStorageViewSelect() {
 
 function getGridCardFieldOptions(storageName = currentWriteStorageName()) {
   return fieldsForStorage(storageName, { includeCustom: true })
-    .filter((field) => !["system-id", "system-title", "system-image-path"].includes(field.id));
+    .filter((field) => field.id !== "system-image-path");
 }
 
 function fieldValueCount(field, artifacts) {
@@ -1930,13 +1983,15 @@ function fieldValueCount(field, artifacts) {
   ), 0);
 }
 
-function getAutoGridCardField(artifacts) {
+function getAutoGridCardField(artifacts, options = {}) {
+  const excludedIds = new Set(options.excludeIds || []);
   return getGridCardFieldOptions()
+    .filter((field) => !excludedIds.has(field.id))
     .map((field, index) => ({
       field,
       index,
       count: fieldValueCount(field, artifacts),
-      visibleRank: field.visibleInList ? 1 : 0
+      visibleRank: getFieldVisibleInList(field) ? 1 : 0
     }))
     .filter((entry) => entry.count > 0)
     .sort((a, b) => (
@@ -1946,33 +2001,67 @@ function getAutoGridCardField(artifacts) {
     ))[0]?.field || null;
 }
 
-function getGridCardField(artifacts) {
-  if (state.gridCardFieldId === GRID_CARD_FIELD_NONE) return null;
-  const options = getGridCardFieldOptions();
-  if (state.gridCardFieldId) {
-    return options.find((field) => field.id === state.gridCardFieldId) || null;
+function getGridCardFieldById(fieldId, artifacts, options = {}) {
+  if (fieldId === GRID_CARD_FIELD_NONE) return null;
+  const fields = getGridCardFieldOptions();
+  if (fieldId) {
+    return fields.find((field) => field.id === fieldId) || null;
   }
-  return getAutoGridCardField(artifacts);
+  return getAutoGridCardField(artifacts, options);
+}
+
+function getGridCardFields(artifacts) {
+  const primary = getGridCardFieldById(state.gridCardFieldId, artifacts, {
+    excludeIds: ["system-id", "system-title", "system-image-path"]
+  });
+  const footer = getGridCardFieldById(state.gridCardFooterFieldId, artifacts, {
+    excludeIds: ["system-image-path"]
+  });
+  return { primary, footer };
+}
+
+function renderGridCardSelect(select, artifacts, config) {
+  if (!select) return;
+  const isGrid = state.viewMode === "grid" && state.activeStorageName !== ALL_STORAGE_KEY;
+  select.classList.toggle("hidden", !isGrid);
+  select.disabled = !isGrid;
+  if (!isGrid) return;
+  const fields = getGridCardFieldOptions();
+  const autoField = getAutoGridCardField(artifacts, { excludeIds: config.autoExcludeIds });
+  const selectedValue = state[config.stateKey];
+  const selectedIsValid = !selectedValue
+    || selectedValue === GRID_CARD_FIELD_NONE
+    || fields.some((field) => field.id === selectedValue);
+  if (!selectedIsValid) {
+    state[config.stateKey] = config.fallbackValue || "";
+    localStorage.setItem(config.storageKey, state[config.stateKey]);
+  }
+  select.innerHTML = "";
+  select.append(new Option(autoField ? `${config.autoLabel}: ${autoField.label}` : config.autoLabel, ""));
+  select.append(new Option(config.noneLabel, GRID_CARD_FIELD_NONE));
+  fields.forEach((field) => select.append(new Option(field.label, field.id)));
+  select.value = state[config.stateKey];
+  select.title = config.title;
 }
 
 function renderGridCardFieldSelect(artifacts = []) {
-  if (!dom.gridCardFieldSelect) return;
-  const isGrid = state.viewMode === "grid" && state.activeStorageName !== ALL_STORAGE_KEY;
-  dom.gridCardFieldSelect.classList.toggle("hidden", !isGrid);
-  dom.gridCardFieldSelect.disabled = !isGrid;
-  if (!isGrid) return;
-  const fields = getGridCardFieldOptions();
-  const autoField = getAutoGridCardField(artifacts);
-  const selectedIsValid = !state.gridCardFieldId
-    || state.gridCardFieldId === GRID_CARD_FIELD_NONE
-    || fields.some((field) => field.id === state.gridCardFieldId);
-  if (!selectedIsValid) state.gridCardFieldId = "";
-  dom.gridCardFieldSelect.innerHTML = "";
-  dom.gridCardFieldSelect.append(new Option(autoField ? `Auto: ${autoField.label}` : "Auto field", ""));
-  dom.gridCardFieldSelect.append(new Option("No summary field", GRID_CARD_FIELD_NONE));
-  fields.forEach((field) => dom.gridCardFieldSelect.append(new Option(field.label, field.id)));
-  dom.gridCardFieldSelect.value = state.gridCardFieldId;
-  dom.gridCardFieldSelect.title = "Grid card summary field";
+  renderGridCardSelect(dom.gridCardFieldSelect, artifacts, {
+    stateKey: "gridCardFieldId",
+    storageKey: GRID_CARD_FIELD_STORAGE_KEY,
+    autoLabel: "Top auto",
+    noneLabel: "No top field",
+    title: "Grid card top field",
+    autoExcludeIds: ["system-id", "system-title", "system-image-path"]
+  });
+  renderGridCardSelect(dom.gridCardFooterFieldSelect, artifacts, {
+    stateKey: "gridCardFooterFieldId",
+    storageKey: GRID_CARD_FOOTER_FIELD_STORAGE_KEY,
+    fallbackValue: "system-id",
+    autoLabel: "Bottom auto",
+    noneLabel: "No bottom field",
+    title: "Grid card bottom field",
+    autoExcludeIds: ["system-image-path"]
+  });
 }
 
 function applyWorkspaceLayout() {
@@ -2298,6 +2387,7 @@ function createCustomFieldListControls(sourceFields) {
 }
 
 function createFieldSyncTools(targetStorage) {
+  if (isReadOnlyMode()) return null;
   const sourceStorages = getAllStorageNames();
   if (!sourceStorages.length) return null;
   const tools = document.createElement("div");
@@ -2828,20 +2918,16 @@ function createFieldChip(field) {
   }
   const actions = document.createElement("div");
   const visible = document.createElement("button");
-  visible.className = `icon-button ${field.visibleInList ? "active" : ""}`;
+  const shownInList = getFieldVisibleInList(field);
+  visible.className = `icon-button ${shownInList ? "active" : ""}`;
   visible.type = "button";
   visible.title = state.language === "zh" ? "在列表中显示" : "Show in list";
-  visible.title = field.visibleInList ? "Shown in list" : "Hidden from list";
+  visible.title = shownInList ? "Shown in list" : "Hidden from list";
   visible.setAttribute("aria-label", visible.title);
-  visible.setAttribute("aria-pressed", String(field.visibleInList));
-  visible.textContent = field.visibleInList ? "✓" : "";
-  visible.disabled = isReadOnlyMode();
+  visible.setAttribute("aria-pressed", String(shownInList));
+  visible.textContent = shownInList ? "✓" : "";
   visible.addEventListener("click", async () => {
-    if (!ensureEditable()) return;
-    await pushUndoSnapshot();
-    await store.updateField(field.id, { visibleInList: !field.visibleInList });
-    await refreshState();
-    render();
+    await setFieldVisibleInList(field, !getFieldVisibleInList(field));
   });
   actions.append(visible);
   if (!field.isSystemField) {
@@ -2914,7 +3000,7 @@ function renderCollection() {
   }
   const artifacts = getFilteredArtifacts();
   renderGridCardFieldSelect(artifacts);
-  const gridCardField = getGridCardField(artifacts);
+  const gridCardFields = getGridCardFields(artifacts);
   dom.selectionSummary.textContent = `${artifacts.length} ${tr("items")} · ${tr("selected")} ${state.selectedIds.size}`;
   dom.emptyState.classList.toggle("hidden", state.artifacts.length > 0);
   if (state.publishedError) {
@@ -2924,7 +3010,7 @@ function renderCollection() {
   }
   dom.gridView.innerHTML = "";
   dom.listView.innerHTML = "";
-  artifacts.forEach((artifact) => dom.gridView.append(createArtifactCard(artifact, gridCardField)));
+  artifacts.forEach((artifact) => dom.gridView.append(createArtifactCard(artifact, gridCardFields)));
   dom.listView.append(createArtifactTable(artifacts));
   syncTableScrollSlider();
 }
@@ -3284,7 +3370,7 @@ function openStorageMenu(event, storageName) {
   ]);
 }
 
-function createArtifactCard(artifact, gridCardField = null) {
+function createArtifactCard(artifact, gridCardFields = {}) {
   const card = document.createElement("article");
   card.className = `artifact-card selectable-item ${state.selectedIds.has(artifact.id) ? "selected" : ""}`;
   card.dataset.artifactId = artifact.id;
@@ -3305,16 +3391,20 @@ function createArtifactCard(artifact, gridCardField = null) {
   const body = document.createElement("div");
   body.className = "artifact-card-body";
   const imageBadge = artifactHasImages(artifact) ? imagePresenceBadgeHtml() : "";
+  const gridCardField = gridCardFields.primary || null;
+  const gridCardFooterField = gridCardFields.footer || null;
   const summaryValue = gridCardField ? cleanCell(getFieldValue(artifact, gridCardField)) : "";
   const summaryLine = summaryValue
     ? `<div class="artifact-meta-line" title="${escapeAttr(gridCardField.label)}">${escapeHtml(summaryValue)}</div>`
     : "";
-  const locationValue = cleanCell(artifact.metadata.Location);
-  const identityValue = gridCardField?.label === "Location" ? artifact.id : (locationValue || artifact.id);
+  const footerValue = gridCardFooterField ? cleanCell(getFieldValue(artifact, gridCardFooterField)) : "";
+  const footerLine = footerValue
+    ? `<div class="artifact-meta-line" title="${escapeAttr(gridCardFooterField.label)}">${escapeHtml(footerValue)}</div>`
+    : "";
   body.innerHTML = `
     <div class="artifact-title">${escapeHtml(artifact.metadata.Title || artifact.title)}${imageBadge}</div>
     ${summaryLine}
-    <div class="artifact-meta-line">${escapeHtml(identityValue)}</div>
+    ${footerLine}
   `;
   card.append(thumb, body);
   card.addEventListener("click", (event) => selectArtifact(artifact.id, event));
@@ -3327,7 +3417,7 @@ function createArtifactTable(artifacts, storageOverride = "") {
   const table = document.createElement("table");
   table.className = "artifact-table";
   const storageName = storageOverride || (artifacts[0] ? getArtifactStorageName(artifacts[0]) : currentWriteStorageName());
-  const visibleFields = fieldsForStorage(storageName, { includeCustom: true }).filter((field) => field.visibleInList);
+  const visibleFields = fieldsForStorage(storageName, { includeCustom: true }).filter(getFieldVisibleInList);
   const thead = document.createElement("thead");
   const headerRow = document.createElement("tr");
   visibleFields.forEach((field) => {
@@ -3394,17 +3484,14 @@ function createImagePresenceBadge() {
 function openColumnMenu(event) {
   event.preventDefault();
   event.stopPropagation();
-  if (isReadOnlyMode()) return;
   dom.columnMenu.innerHTML = "";
-  state.fields.forEach((field) => {
+  fieldsForStorage(currentWriteStorageName(), { includeCustom: true }).forEach((field) => {
     const label = document.createElement("label");
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
-    checkbox.checked = field.visibleInList;
+    checkbox.checked = getFieldVisibleInList(field);
     checkbox.addEventListener("change", async () => {
-      await store.updateField(field.id, { visibleInList: checkbox.checked });
-      await refreshState();
-      render();
+      await setFieldVisibleInList(field, checkbox.checked);
       dom.columnMenu.classList.remove("hidden");
     });
     label.append(checkbox, document.createTextNode(field.label));
