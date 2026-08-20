@@ -975,6 +975,24 @@ body[data-project-mode="published"] .metadata-textarea {
   color: var(--ink);
 }
 
+.artifact-table th.draggable-column {
+  cursor: grab;
+  user-select: none;
+}
+
+.artifact-table th.draggable-column:active {
+  cursor: grabbing;
+}
+
+.artifact-table th.column-dragging {
+  opacity: 0.55;
+}
+
+.artifact-table th.column-drag-over {
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--selected);
+}
+
 .sort-indicator {
   float: right;
   width: 22px;
