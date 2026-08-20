@@ -25,6 +25,7 @@ const GRID_CARD_FIELD_STORAGE_KEY = "easy-network-grid-card-field";
 const GRID_CARD_FOOTER_FIELD_STORAGE_KEY = "easy-network-grid-card-footer-field";
 const GRID_CARD_FIELD_NONE = "__none__";
 const READONLY_FIELD_VISIBILITY_STORAGE_KEY = "easy-network-readonly-field-visibility-v1";
+const LIST_COLUMN_ORDER_STORAGE_KEY = "easy-network-list-column-order-v1";
 
 const SYSTEM_FIELDS = [
   { id: "system-id", label: "ID", type: "text", visibleInList: true, isSystemField: true },
@@ -179,6 +180,9 @@ const state = {
   gridCardFieldId: localStorage.getItem(GRID_CARD_FIELD_STORAGE_KEY) || "",
   gridCardFooterFieldId: localStorage.getItem(GRID_CARD_FOOTER_FIELD_STORAGE_KEY) || "system-id",
   fieldVisibilityOverrides: readFieldVisibilityOverrides(),
+  listColumnOrders: readListColumnOrders(),
+  draggedColumn: null,
+  suppressColumnClick: false,
   selectedIds: new Set(),
   activeArtifactId: null,
   activeImageId: null,
@@ -859,6 +863,53 @@ async function setFieldVisibleInList(field, visible) {
   await store.updateField(field.id, { visibleInList: Boolean(visible) });
   await refreshState();
   render();
+}
+
+function readListColumnOrders() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LIST_COLUMN_ORDER_STORAGE_KEY) || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function saveListColumnOrders() {
+  localStorage.setItem(LIST_COLUMN_ORDER_STORAGE_KEY, JSON.stringify(state.listColumnOrders || {}));
+}
+
+function getListColumnOrderKey(storageName) {
+  const projectKey = state.publishedSlug || state.project?.id || state.project?.title || "local";
+  return `${projectKey}:${normalizeStorageName(storageName || currentWriteStorageName())}`;
+}
+
+function getVisibleListFieldsForStorage(storageName) {
+  const fields = fieldsForStorage(storageName, { includeCustom: true }).filter(getFieldVisibleInList);
+  const key = getListColumnOrderKey(storageName);
+  const order = Array.isArray(state.listColumnOrders[key]) ? state.listColumnOrders[key] : [];
+  if (!order.length) return fields;
+  const fieldById = new Map(fields.map((field) => [field.id, field]));
+  const ordered = order.map((fieldId) => fieldById.get(fieldId)).filter(Boolean);
+  const orderedIds = new Set(ordered.map((field) => field.id));
+  return [...ordered, ...fields.filter((field) => !orderedIds.has(field.id))];
+}
+
+function saveListColumnOrder(storageName, fields) {
+  state.listColumnOrders[getListColumnOrderKey(storageName)] = fields.map((field) => field.id);
+  saveListColumnOrders();
+}
+
+function moveListColumn(storageName, sourceFieldId, targetFieldId) {
+  if (!sourceFieldId || !targetFieldId || sourceFieldId === targetFieldId) return;
+  const fields = getVisibleListFieldsForStorage(storageName);
+  const sourceIndex = fields.findIndex((field) => field.id === sourceFieldId);
+  const targetIndex = fields.findIndex((field) => field.id === targetFieldId);
+  if (sourceIndex < 0 || targetIndex < 0) return;
+  const [moved] = fields.splice(sourceIndex, 1);
+  const insertIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+  fields.splice(insertIndex, 0, moved);
+  saveListColumnOrder(storageName, fields);
+  renderCollection();
 }
 
 function createId(prefix) {
@@ -3417,12 +3468,16 @@ function createArtifactTable(artifacts, storageOverride = "") {
   const table = document.createElement("table");
   table.className = "artifact-table";
   const storageName = storageOverride || (artifacts[0] ? getArtifactStorageName(artifacts[0]) : currentWriteStorageName());
-  const visibleFields = fieldsForStorage(storageName, { includeCustom: true }).filter(getFieldVisibleInList);
+  const visibleFields = getVisibleListFieldsForStorage(storageName);
   const thead = document.createElement("thead");
   const headerRow = document.createElement("tr");
   visibleFields.forEach((field) => {
     const th = document.createElement("th");
+    th.className = "draggable-column";
+    th.draggable = true;
+    th.dataset.fieldId = field.id;
     th.textContent = field.label;
+    bindListColumnDrag(th, field, storageName);
     const sortRule = state.sortRules.find((rule) => rule.fieldId === field.id);
     if (sortRule) {
       const indicator = document.createElement("button");
@@ -3437,7 +3492,10 @@ function createArtifactTable(artifacts, storageOverride = "") {
       th.append(indicator);
     }
     th.title = state.language === "en" ? "Click to sort by this field. Right click to choose visible fields." : "点击按此字段排序，右键选择显示字段";
-    th.addEventListener("click", () => toggleHeaderSort(field.id));
+    th.addEventListener("click", () => {
+      if (state.suppressColumnClick) return;
+      toggleHeaderSort(field.id);
+    });
     th.addEventListener("contextmenu", (event) => openColumnMenu(event));
     headerRow.append(th);
   });
@@ -3460,6 +3518,41 @@ function createArtifactTable(artifacts, storageOverride = "") {
   });
   table.append(thead, tbody);
   return table;
+}
+
+function bindListColumnDrag(th, field, storageName) {
+  th.addEventListener("dragstart", (event) => {
+    state.draggedColumn = { fieldId: field.id, storageName };
+    event.dataTransfer?.setData("text/plain", field.id);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+    th.classList.add("column-dragging");
+  });
+  th.addEventListener("dragover", (event) => {
+    if (!state.draggedColumn || state.draggedColumn.storageName !== storageName || state.draggedColumn.fieldId === field.id) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    th.classList.add("column-drag-over");
+  });
+  th.addEventListener("dragleave", () => {
+    th.classList.remove("column-drag-over");
+  });
+  th.addEventListener("drop", (event) => {
+    if (!state.draggedColumn || state.draggedColumn.storageName !== storageName) return;
+    event.preventDefault();
+    th.classList.remove("column-drag-over");
+    const sourceFieldId = event.dataTransfer?.getData("text/plain") || state.draggedColumn.fieldId;
+    state.suppressColumnClick = true;
+    window.setTimeout(() => {
+      state.suppressColumnClick = false;
+    }, 120);
+    moveListColumn(storageName, sourceFieldId, field.id);
+  });
+  th.addEventListener("dragend", () => {
+    state.draggedColumn = null;
+    document.querySelectorAll(".column-dragging, .column-drag-over").forEach((element) => {
+      element.classList.remove("column-dragging", "column-drag-over");
+    });
+  });
 }
 
 function artifactHasImages(artifact) {
