@@ -306,6 +306,11 @@ body[data-project-mode="published"] .metadata-textarea {
   min-height: 34px;
 }
 
+.grid-card-field-select {
+  width: 190px;
+  max-width: min(190px, 100%);
+}
+
 .icon-button {
   width: 34px;
   height: 34px;
