@@ -19,7 +19,7 @@ https://wenronghan.github.io/Easy-Network/docs/Easy%20Network.pdf
 Read-only example inventory:
 
 ```text
-https://wenronghan.github.io/Easy-Network/#/cloud/lute-iconography
+https://wenronghan.github.io/Easy-Network/#/cloud/lute-iconography-read-only
 ```
 
 This link opens the published `Lute Iconography` snapshot for browsing, sharing, and copying into a local editable library. It is not the browser's local editable IndexedDB library itself.
