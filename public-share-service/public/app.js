@@ -183,6 +183,7 @@ const state = {
   listColumnOrders: readListColumnOrders(),
   draggedColumn: null,
   suppressColumnClick: false,
+  boxSelectCleanup: null,
   selectedIds: new Set(),
   activeArtifactId: null,
   activeImageId: null,
@@ -3533,11 +3534,13 @@ function bindListColumnDrag(th, field, storageName) {
   };
   const stopSurfaceSelection = (event) => {
     event.stopPropagation();
+    cancelBoxSelect(false);
   };
   th.addEventListener("pointerdown", stopSurfaceSelection);
   th.addEventListener("mousedown", stopSurfaceSelection);
   th.addEventListener("dragstart", (event) => {
     event.stopPropagation();
+    cancelBoxSelect(false);
     suppressNextColumnClick();
     state.draggedColumn = { fieldId: field.id, storageName };
     event.dataTransfer?.setData("text/plain", field.id);
@@ -3558,6 +3561,7 @@ function bindListColumnDrag(th, field, storageName) {
     if (!state.draggedColumn || state.draggedColumn.storageName !== storageName) return;
     event.preventDefault();
     event.stopPropagation();
+    cancelBoxSelect(false);
     th.classList.remove("column-drag-over");
     const sourceFieldId = event.dataTransfer?.getData("text/plain") || state.draggedColumn.fieldId;
     suppressNextColumnClick();
@@ -3565,6 +3569,7 @@ function bindListColumnDrag(th, field, storageName) {
   });
   th.addEventListener("dragend", (event) => {
     event.stopPropagation();
+    cancelBoxSelect(false);
     state.draggedColumn = null;
     document.querySelectorAll(".column-dragging, .column-drag-over").forEach((element) => {
       element.classList.remove("column-dragging", "column-drag-over");
@@ -3810,6 +3815,7 @@ function selectArtifact(id, event = {}) {
 function beginBoxSelect(event) {
   if (event.button !== 0) return;
   if (event.target.closest("button,input,textarea,select,.artifact-card,.artifact-row,.artifact-table th,.context-menu")) return;
+  cancelBoxSelect(false);
   const start = { x: event.clientX, y: event.clientY };
   const surfaceRect = dom.collectionSurface.getBoundingClientRect();
   dom.selectionBox.classList.remove("hidden");
@@ -3843,14 +3849,27 @@ function beginBoxSelect(event) {
   };
 
   const onUp = () => {
-    dom.selectionBox.classList.add("hidden");
+    cancelBoxSelect();
+  };
+
+  state.boxSelectCleanup = (renderAfterCancel = true) => {
     document.removeEventListener("pointermove", onMove);
     document.removeEventListener("pointerup", onUp);
-    renderDetail();
+    document.removeEventListener("pointercancel", onUp);
+    state.boxSelectCleanup = null;
+    if (renderAfterCancel) renderDetail();
   };
 
   document.addEventListener("pointermove", onMove);
   document.addEventListener("pointerup", onUp);
+  document.addEventListener("pointercancel", onUp);
+}
+
+function cancelBoxSelect(renderAfterCancel = true) {
+  dom.selectionBox.classList.add("hidden");
+  dom.selectionBox.style.width = "0px";
+  dom.selectionBox.style.height = "0px";
+  if (state.boxSelectCleanup) state.boxSelectCleanup(renderAfterCancel);
 }
 
 function intersects(a, b) {
