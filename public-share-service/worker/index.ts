@@ -101,7 +101,7 @@ function dataUrlToBytes(value: string): Uint8Array {
 async function storeProjectFile(
   env: Env,
   slug: string,
-  file: { path?: string; text?: string; dataUrl?: string; contentType?: string },
+  file: { path?: string; text?: string; dataUrl?: string; contentType?: string; ownerToken?: string; accessMode?: string },
 ): Promise<string> {
   const relativePath = cleanRelativePath(file.path);
   if (!relativePath) return "";
@@ -110,15 +110,61 @@ async function storeProjectFile(
   const body = typeof file.dataUrl === "string"
     ? dataUrlToBytes(file.dataUrl)
     : String(file.text || "");
+  const customMetadata: Record<string, string> = { slug };
+  if (relativePath === "project.json") {
+    if (file.ownerToken) customMetadata.ownerToken = String(file.ownerToken);
+    if (file.accessMode) customMetadata.accessMode = String(file.accessMode);
+  }
   await env.PROJECT_FILES.put(key, body, {
     httpMetadata: { contentType },
-    customMetadata: { slug },
+    customMetadata,
   });
   return relativePath;
 }
 
 async function projectManifestExists(env: Env, slug: string): Promise<boolean> {
   return Boolean(await env.PROJECT_FILES.head(`projects/${slug}/project.json`));
+}
+
+async function readExistingProject(env: Env, slug: string): Promise<{
+  exists: boolean;
+  manifest?: { accessMode?: string; project?: { accessMode?: string } };
+  ownerToken?: string;
+}> {
+  const object = await env.PROJECT_FILES.get(`projects/${slug}/project.json`);
+  if (!object) return { exists: false };
+  let manifest = {};
+  try {
+    manifest = await object.json();
+  } catch (error) {
+    manifest = {};
+  }
+  return {
+    exists: true,
+    manifest,
+    ownerToken: object.customMetadata?.ownerToken,
+  };
+}
+
+async function canOverwriteProject(env: Env, slug: string, payload: {
+  overwrite?: boolean;
+  ownerToken?: string;
+}): Promise<boolean> {
+  if (!payload.overwrite) return false;
+  const existing = await readExistingProject(env, slug);
+  if (!existing.exists) return true;
+  const ownerToken = String(payload.ownerToken || "").trim();
+  if (ownerToken && existing.ownerToken === ownerToken) return true;
+  return existing.manifest?.accessMode === "editable" || existing.manifest?.project?.accessMode === "editable";
+}
+
+async function prepareProjectUpload(env: Env, slug: string, payload: {
+  overwrite?: boolean;
+  ownerToken?: string;
+}): Promise<boolean> {
+  if (!await projectManifestExists(env, slug)) return true;
+  if (!await canOverwriteProject(env, slug, payload)) return false;
+  return true;
 }
 
 function slugConflictResponse(slug: string): Response {
@@ -138,9 +184,9 @@ function publishResult(request: Request, payload: { accessMode?: string; publicB
 }
 
 async function startPublishProject(request: Request, env: Env): Promise<Response> {
-  const payload = await request.json() as { slug?: string };
+  const payload = await request.json() as { slug?: string; overwrite?: boolean; ownerToken?: string };
   const slug = cleanSlug(payload.slug);
-  if (await projectManifestExists(env, slug)) {
+  if (!await prepareProjectUpload(env, slug, payload)) {
     return slugConflictResponse(slug);
   }
   return jsonResponse({ ok: true, slug });
@@ -159,16 +205,20 @@ async function finishPublishProject(request: Request, env: Env): Promise<Respons
     slug?: string;
     accessMode?: string;
     publicBaseUrl?: string;
+    ownerToken?: string;
+    overwrite?: boolean;
     manifest?: { slug?: string; [key: string]: unknown };
   };
   const slug = cleanSlug(payload.slug || payload.manifest?.slug);
-  if (await projectManifestExists(env, slug)) {
+  if (!await prepareProjectUpload(env, slug, payload)) {
     return slugConflictResponse(slug);
   }
   await storeProjectFile(env, slug, {
     path: "project.json",
     text: JSON.stringify({ ...(payload.manifest || {}), slug }, null, 2),
     contentType: "application/json;charset=utf-8",
+    ownerToken: payload.ownerToken,
+    accessMode: payload.accessMode,
   });
   return publishResult(request, payload, slug);
 }
@@ -179,12 +229,14 @@ async function publishProject(request: Request, env: Env): Promise<Response> {
     slug?: string;
     accessMode?: string;
     publicBaseUrl?: string;
+    ownerToken?: string;
+    overwrite?: boolean;
     manifest?: { slug?: string };
     files?: Array<{ path?: string; text?: string; dataUrl?: string; contentType?: string }>;
   };
   const slug = cleanSlug(payload.slug || payload.manifest?.slug);
   if (payload.action === "start") {
-    if (await projectManifestExists(env, slug)) {
+    if (!await prepareProjectUpload(env, slug, payload)) {
       return slugConflictResponse(slug);
     }
     return jsonResponse({ ok: true, slug });
@@ -194,19 +246,21 @@ async function publishProject(request: Request, env: Env): Promise<Response> {
     return jsonResponse({ ok: true, slug, path });
   }
   if (payload.action === "finish") {
-    if (await projectManifestExists(env, slug)) {
+    if (!await prepareProjectUpload(env, slug, payload)) {
       return slugConflictResponse(slug);
     }
     await storeProjectFile(env, slug, {
       path: "project.json",
       text: JSON.stringify({ ...(payload.manifest || {}), slug }, null, 2),
       contentType: "application/json;charset=utf-8",
+      ownerToken: payload.ownerToken,
+      accessMode: payload.accessMode,
     });
     return publishResult(request, payload, slug);
   }
 
   const files = Array.isArray(payload.files) ? payload.files : [];
-  if (await projectManifestExists(env, slug)) {
+  if (!await prepareProjectUpload(env, slug, payload)) {
     return slugConflictResponse(slug);
   }
   if (!files.some((file) => cleanRelativePath(file.path) === "project.json")) {
@@ -214,7 +268,12 @@ async function publishProject(request: Request, env: Env): Promise<Response> {
   }
 
   for (const file of files) {
-    await storeProjectFile(env, slug, file);
+    const relativePath = cleanRelativePath(file.path);
+    await storeProjectFile(env, slug, {
+      ...file,
+      ownerToken: relativePath === "project.json" ? payload.ownerToken : undefined,
+      accessMode: relativePath === "project.json" ? payload.accessMode : undefined,
+    });
   }
 
   return publishResult(request, payload, slug);
