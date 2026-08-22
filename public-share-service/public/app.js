@@ -4786,6 +4786,8 @@ function repairTextValue(value) {
   text = text
     .replace(/\bMus(?:\uFFFD|\u00ef\u00bf\u00bd){1,6}e\b/g, "Mus\u00e9e")
     .replace(/\bmus(?:\uFFFD|\u00ef\u00bf\u00bd){1,6}e\b/g, "mus\u00e9e")
+    .replace(/\bCavali(?:\uFFFD|\u00ef\u00bf\u00bd){1,6}re-musicienne\b/g, "Cavali\u00e8re-musicienne")
+    .replace(/\bMuseo Delle Civilt(?:\uFFFD|\u00ef\u00bf\u00bd){1,6}/g, "Museo Delle Civilt\u00e0")
     .replace(/\bd(?:\uFFFD|\u00ef\u00bf\u00bd){1,6}Arte\b/g, "d\u2019Arte")
     .replace(/(\d)(?:\uFFFD|\u00ef\u00bf\u00bd)+C(\d)/g, "$1-$2")
     .replace(/(\d)(?:\uFFFD|\u00ef\u00bf\u00bd){1,6}(\d)/g, "$1-$2");
