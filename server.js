@@ -5,6 +5,7 @@ const path = require("path");
 
 const root = path.resolve(__dirname);
 const port = Number(process.env.PORT || process.argv[2] || 4173);
+const ownerRoot = path.join(root, ".easy-network-share-owners");
 const types = {
   ".html": "text/html;charset=utf-8",
   ".css": "text/css;charset=utf-8",
@@ -93,6 +94,59 @@ function projectManifestExists(slug) {
   return fs.existsSync(path.join(root, "shared-projects", slug, "project.json"));
 }
 
+function getProjectRoot(slug) {
+  return path.join(root, "shared-projects", slug);
+}
+
+function getOwnerFilePath(slug) {
+  return path.join(ownerRoot, `${slug}.json`);
+}
+
+function readProjectManifest(slug) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(getProjectRoot(slug), "project.json"), "utf8"));
+  } catch (error) {
+    return null;
+  }
+}
+
+function readOwnerRecord(slug) {
+  try {
+    return JSON.parse(fs.readFileSync(getOwnerFilePath(slug), "utf8"));
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeOwnerRecord(slug, payload) {
+  const ownerToken = String(payload.ownerToken || "").trim();
+  if (!ownerToken) return;
+  fs.mkdirSync(ownerRoot, { recursive: true });
+  fs.writeFileSync(getOwnerFilePath(slug), JSON.stringify({
+    ownerToken,
+    accessMode: payload.accessMode || "read-only",
+    updatedAt: new Date().toISOString()
+  }, null, 2), "utf8");
+}
+
+function canOverwriteProject(slug, payload) {
+  if (!payload.overwrite || !projectManifestExists(slug)) return false;
+  const ownerToken = String(payload.ownerToken || "").trim();
+  const ownerRecord = readOwnerRecord(slug);
+  if (ownerToken && ownerRecord?.ownerToken === ownerToken) return true;
+  const manifest = readProjectManifest(slug);
+  return manifest?.accessMode === "editable" || manifest?.project?.accessMode === "editable";
+}
+
+function prepareProjectRoot(slug, payload) {
+  const projectRoot = getProjectRoot(slug);
+  if (projectManifestExists(slug)) {
+    if (!canOverwriteProject(slug, payload)) return { ok: false, projectRoot };
+  }
+  fs.mkdirSync(projectRoot, { recursive: true });
+  return { ok: true, projectRoot };
+}
+
 function sendSlugConflict(res, slug) {
   sendJson(res, 409, {
     ok: false,
@@ -101,6 +155,7 @@ function sendSlugConflict(res, slug) {
 }
 
 function sendPublishResult(req, res, payload, slug) {
+  writeOwnerRecord(slug, payload);
   const origin = getShareOrigin(req);
   const manifestUrl = `${origin}/shared-projects/${encodeURIComponent(slug)}/project.json`;
   const publicBaseUrl = String(payload.publicBaseUrl || "").replace(/\/?$/, "/");
@@ -141,12 +196,11 @@ const server = http.createServer((req, res) => {
       try {
         const payload = JSON.parse(body || "{}");
         const slug = safeSlug(payload.slug);
-        if (projectManifestExists(slug)) {
+        const prepared = prepareProjectRoot(slug, payload);
+        if (!prepared.ok) {
           sendSlugConflict(res, slug);
           return;
         }
-        const projectRoot = path.join(root, "shared-projects", slug);
-        fs.mkdirSync(projectRoot, { recursive: true });
         sendJson(res, 200, { ok: true, slug });
       } catch (error) {
         sendJson(res, 500, { ok: false, error: error.message || "Could not start upload." });
@@ -176,12 +230,12 @@ const server = http.createServer((req, res) => {
       try {
         const payload = JSON.parse(body || "{}");
         const slug = safeSlug(payload.slug || payload.manifest?.slug);
-        if (projectManifestExists(slug)) {
+        const prepared = prepareProjectRoot(slug, payload);
+        if (!prepared.ok) {
           sendSlugConflict(res, slug);
           return;
         }
-        const projectRoot = path.join(root, "shared-projects", slug);
-        fs.mkdirSync(projectRoot, { recursive: true });
+        const projectRoot = prepared.projectRoot;
         writeProjectFile(projectRoot, {
           path: "project.json",
           text: JSON.stringify({ ...(payload.manifest || {}), slug }, null, 2),
@@ -200,14 +254,14 @@ const server = http.createServer((req, res) => {
       try {
         const payload = JSON.parse(body || "{}");
         const slug = safeSlug(payload.slug || payload.manifest?.slug);
-        const projectRoot = path.join(root, "shared-projects", slug);
+        const projectRoot = getProjectRoot(slug);
 
         if (payload.action === "start") {
-          if (projectManifestExists(slug)) {
+          const prepared = prepareProjectRoot(slug, payload);
+          if (!prepared.ok) {
             sendSlugConflict(res, slug);
             return;
           }
-          fs.mkdirSync(projectRoot, { recursive: true });
           sendJson(res, 200, { ok: true, slug });
           return;
         }
@@ -218,7 +272,8 @@ const server = http.createServer((req, res) => {
           return;
         }
         if (payload.action === "finish") {
-          if (projectManifestExists(slug)) {
+          const prepared = prepareProjectRoot(slug, payload);
+          if (!prepared.ok) {
             sendSlugConflict(res, slug);
             return;
           }
@@ -232,7 +287,8 @@ const server = http.createServer((req, res) => {
         }
 
         const files = Array.isArray(payload.files) ? payload.files : [];
-        if (projectManifestExists(slug)) {
+        const prepared = prepareProjectRoot(slug, payload);
+        if (!prepared.ok) {
           sendSlugConflict(res, slug);
           return;
         }
@@ -247,6 +303,12 @@ const server = http.createServer((req, res) => {
 
   const relativePath = url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname.slice(1));
   const filePath = path.resolve(root, relativePath);
+
+  if (relativePath.startsWith(".easy-network-share-owners/")) {
+    res.writeHead(404);
+    res.end("Not found");
+    return;
+  }
 
   if (!filePath.startsWith(root + path.sep) && filePath !== root) {
     res.writeHead(403);
