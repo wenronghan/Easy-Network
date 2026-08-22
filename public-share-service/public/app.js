@@ -8,6 +8,7 @@ const PUBLIC_BASE_URL_STORAGE_KEY = "easy-network-public-base-url";
 const SHARE_SERVICE_URL_STORAGE_KEY = "easy-network-share-service-url";
 const PUBLISH_SCOPE_STORAGE_KEY = "easy-network-publish-scope";
 const PROTECTED_PUBLISH_SLUGS_STORAGE_KEY = "easy-network-protected-publish-slugs-v1";
+const OWNED_PUBLISH_SLUGS_STORAGE_KEY = "easy-network-owned-publish-slugs-v1";
 const DEFAULT_PUBLIC_BASE_URL = "https://wenronghan.github.io/Easy-Network/";
 const DEFAULT_SHARE_SERVICE_URL = "https://easy-network-share.wenronghan7.chatgpt.site";
 const PUBLISH_SCOPE_INVENTORY = "inventory";
@@ -181,6 +182,7 @@ const state = {
   gridCardFooterFieldId: localStorage.getItem(GRID_CARD_FOOTER_FIELD_STORAGE_KEY) || "system-id",
   fieldVisibilityOverrides: readFieldVisibilityOverrides(),
   listColumnOrders: readListColumnOrders(),
+  ownedPublishSlugs: readOwnedPublishSlugs(),
   draggedColumn: null,
   suppressColumnClick: false,
   boxSelectCleanup: null,
@@ -884,8 +886,7 @@ function getListColumnOrderKey(storageName) {
   return `${projectKey}:${normalizeStorageName(storageName || currentWriteStorageName())}`;
 }
 
-function getVisibleListFieldsForStorage(storageName) {
-  const fields = fieldsForStorage(storageName, { includeCustom: true }).filter(getFieldVisibleInList);
+function applyListColumnOrder(storageName, fields) {
   const key = getListColumnOrderKey(storageName);
   const order = Array.isArray(state.listColumnOrders[key]) ? state.listColumnOrders[key] : [];
   if (!order.length) return fields;
@@ -893,6 +894,18 @@ function getVisibleListFieldsForStorage(storageName) {
   const ordered = order.map((fieldId) => fieldById.get(fieldId)).filter(Boolean);
   const orderedIds = new Set(ordered.map((field) => field.id));
   return [...ordered, ...fields.filter((field) => !orderedIds.has(field.id))];
+}
+
+function getVisibleListFieldsForStorage(storageName) {
+  const fields = fieldsForStorage(storageName, { includeCustom: true }).filter(getFieldVisibleInList);
+  return applyListColumnOrder(storageName, fields);
+}
+
+function getDetailFieldsForStorage(storageName, { system = false, custom = false } = {}) {
+  const fields = fieldsForStorage(storageName, { includeCustom: true }).filter((field) => (
+    (system && field.isSystemField) || (custom && !field.isSystemField)
+  ));
+  return applyListColumnOrder(storageName, fields);
 }
 
 function saveListColumnOrder(storageName, fields) {
@@ -911,6 +924,8 @@ function moveListColumn(storageName, sourceFieldId, targetFieldId) {
   fields.splice(insertIndex, 0, moved);
   saveListColumnOrder(storageName, fields);
   renderCollection();
+  renderDetail();
+  renderExpandedView();
 }
 
 function createId(prefix) {
@@ -1547,7 +1562,7 @@ async function handleCsvImport(event) {
   const file = event.target.files?.[0];
   event.target.value = "";
   if (!file) return;
-  const text = await file.text();
+  const text = await readTextFile(file);
   const rows = parseCsvRows(text).filter((row) => row.some((cell) => cleanCell(cell)));
   if (rows.length < 2) {
     window.alert(state.language === "en" ? "No CSV rows found." : "CSV 没有可导入的行。");
@@ -1610,7 +1625,7 @@ handleCsvImport = async function handleCsvImportWithMapping(event) {
   const file = event.target.files?.[0];
   event.target.value = "";
   if (!file) return;
-  const text = await file.text();
+  const text = await readTextFile(file);
   const rows = parseCsvRows(text).filter((row) => row.some((cell) => cleanCell(cell)));
   if (rows.length < 2) {
     window.alert(state.language === "en" ? "No CSV rows found." : "No CSV rows found.");
@@ -3990,7 +4005,8 @@ async function reorderThumbnailImage(artifact, sourceId, targetId) {
 
 function renderMetadataForm(container, artifact, expanded) {
   container.innerHTML = "";
-  SYSTEM_FIELDS.forEach((field) => {
+  const storageName = getArtifactStorageName(artifact);
+  getDetailFieldsForStorage(storageName, { system: true }).forEach((field) => {
     const value = getFieldValue(artifact, field);
     const row = createMetadataRow(field.label, value, {
       readOnly: isReadOnlyMode(),
@@ -4035,7 +4051,7 @@ function renderMetadataForm(container, artifact, expanded) {
 function renderCustomFields(container, artifact, expanded) {
   container.innerHTML = "";
   const storageName = getArtifactStorageName(artifact);
-  const allCustom = state.fields.filter((field) => !field.isSystemField && fieldBelongsToStorage(field, storageName));
+  const allCustom = getDetailFieldsForStorage(storageName, { custom: true });
   const applicable = allCustom.filter((field) => fieldAppliesToArtifact(field, artifact));
   if (allCustom.length && allCustom.length !== applicable.length) {
     const toolbar = document.createElement("div");
@@ -4779,6 +4795,25 @@ function slugifyProjectName(value) {
   return ascii || `project-${Date.now().toString(36)}`;
 }
 
+async function readTextFile(file) {
+  const bytes = await file.arrayBuffer();
+  const view = new Uint8Array(bytes);
+  if (view[0] === 0xEF && view[1] === 0xBB && view[2] === 0xBF) {
+    return new TextDecoder("utf-8").decode(view.slice(3));
+  }
+  if (view[0] === 0xFF && view[1] === 0xFE) {
+    return new TextDecoder("utf-16le").decode(view.slice(2));
+  }
+  if (view[0] === 0xFE && view[1] === 0xFF) {
+    return new TextDecoder("utf-16be").decode(view.slice(2));
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(view);
+  } catch (error) {
+    return new TextDecoder("windows-1252").decode(view);
+  }
+}
+
 function getCurrentProjectSlug() {
   return getPublishSlug(state.publishScope);
 }
@@ -4828,6 +4863,60 @@ function getProtectedPublishSlug(storageName) {
   const cleanStorageName = normalizeStorageName(storageName);
   const protectedSlugs = readProtectedPublishSlugs();
   return slugifyProjectName(protectedSlugs[cleanStorageName] || "");
+}
+
+function readOwnedPublishSlugs() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(OWNED_PUBLISH_SLUGS_STORAGE_KEY) || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function saveOwnedPublishSlugs() {
+  localStorage.setItem(OWNED_PUBLISH_SLUGS_STORAGE_KEY, JSON.stringify(state.ownedPublishSlugs || {}));
+}
+
+function createPublishOwnerToken() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function getPublishOwnerRecord(slug) {
+  const cleanSlug = slugifyProjectName(slug);
+  const record = state.ownedPublishSlugs?.[cleanSlug];
+  return record && typeof record === "object" ? record : null;
+}
+
+function getPublishOwnerToken(slug) {
+  const cleanSlug = slugifyProjectName(slug);
+  const record = getPublishOwnerRecord(cleanSlug);
+  const token = record?.ownerToken || createPublishOwnerToken();
+  state.ownedPublishSlugs[cleanSlug] = { ...(record || {}), ownerToken: token, updatedAt: now() };
+  saveOwnedPublishSlugs();
+  return token;
+}
+
+function rememberOwnedPublishSlug(slug, accessMode, ownerToken) {
+  const cleanSlug = slugifyProjectName(slug);
+  if (!cleanSlug || !ownerToken) return;
+  state.ownedPublishSlugs[cleanSlug] = {
+    ownerToken,
+    accessMode: accessMode === SHARE_ACCESS_EDITABLE ? SHARE_ACCESS_EDITABLE : SHARE_ACCESS_READ_ONLY,
+    updatedAt: now()
+  };
+  saveOwnedPublishSlugs();
+}
+
+function canOverwritePublishSlug(slug, accessMode) {
+  const cleanSlug = slugifyProjectName(slug);
+  if (!cleanSlug) return false;
+  if (getPublishOwnerRecord(cleanSlug)?.ownerToken) return true;
+  return state.projectMode === PROJECT_MODE_CLOUD
+    && state.publishedSlug === cleanSlug
+    && getPublishedAccessMode() === SHARE_ACCESS_EDITABLE
+    && accessMode === SHARE_ACCESS_EDITABLE;
 }
 
 function getPublishSlugForAccess(scope = state.publishScope, storageName = "", accessMode = SHARE_ACCESS_READ_ONLY) {
@@ -5539,15 +5628,15 @@ async function assertPublishSlugIsAvailable(publishTarget, slug) {
 }
 
 async function publishProjectInParts(endpoint, payload, onProgress) {
-  const { slug, accessMode, publicBaseUrl, manifest, csvText, imageEntries } = payload;
-  const startPayload = { slug, accessMode, publicBaseUrl };
+  const { slug, accessMode, ownerToken, overwrite, publicBaseUrl, manifest, csvText, imageEntries } = payload;
+  const startPayload = { slug, accessMode, ownerToken, overwrite, publicBaseUrl };
   const csvPayload = {
     slug,
     path: "data/artifacts.csv",
     text: `\uFEFF${csvText}`,
     contentType: "text/csv;charset=utf-8"
   };
-  const finishPayload = { slug, accessMode, publicBaseUrl, manifest };
+  const finishPayload = { slug, accessMode, ownerToken, overwrite, publicBaseUrl, manifest };
   const totalEstimate = [
     jsonPayloadSize(startPayload),
     jsonPayloadSize(csvPayload),
@@ -5590,7 +5679,7 @@ async function publishProjectInParts(endpoint, payload, onProgress) {
 }
 
 async function publishProjectLegacy(endpoint, payload, onProgress) {
-  const { slug, accessMode, publicBaseUrl, manifest, csvText, imageEntries } = payload;
+  const { slug, accessMode, ownerToken, overwrite, publicBaseUrl, manifest, csvText, imageEntries } = payload;
   const files = [
     {
       path: "project.json",
@@ -5612,7 +5701,7 @@ async function publishProjectLegacy(endpoint, payload, onProgress) {
     });
     notifyProgress(onProgress, 50 + ((index + 1) / Math.max(1, imageEntries.length)) * 25, "Preparing upload");
   }
-  const requestBody = JSON.stringify({ slug, accessMode, publicBaseUrl, manifest, files });
+  const requestBody = JSON.stringify({ slug, accessMode, ownerToken, overwrite, publicBaseUrl, manifest, files });
   const uploadSizeLabel = formatByteSize(jsonPayloadSize(requestBody));
   return postPublishJson(endpoint, requestBody, (loaded, total) => {
     if (total > 0) {
@@ -5637,8 +5726,10 @@ async function publishProjectToLocalServer(options = {}) {
   const accessMode = options.accessMode === SHARE_ACCESS_EDITABLE ? SHARE_ACCESS_EDITABLE : SHARE_ACCESS_READ_ONLY;
   const slug = slugifyProjectName(options.slug || getPublishSlugForAccess(scope, storageName, accessMode));
   if (!slug) throw new Error("Enter a link slug first.");
+  const ownerToken = getPublishOwnerToken(slug);
+  const overwrite = canOverwritePublishSlug(slug, accessMode);
   notifyProgress(onProgress, 2, "Checking link");
-  await assertPublishSlugIsAvailable(publishTarget, slug);
+  if (!overwrite) await assertPublishSlugIsAvailable(publishTarget, slug);
   const bundle = await createProjectPackage({ publishable: true, slug, scope, storageName, accessMode, optimizeImages: true, onProgress });
   const serviceBaseUrl = publishTarget.serviceBaseUrl;
   if (serviceBaseUrl) {
@@ -5651,6 +5742,8 @@ async function publishProjectToLocalServer(options = {}) {
   const requestPayload = {
     slug,
     accessMode,
+    ownerToken,
+    overwrite,
     publicBaseUrl: getPublicBaseUrl(),
     manifest: bundle.manifest,
     csvText: bundle.csvText,
@@ -5674,6 +5767,7 @@ async function publishProjectToLocalServer(options = {}) {
     throw new Error(uploadResult?.error || "Could not create a share link. Please try again.");
   }
   notifyProgress(onProgress, 100, "Done");
+  rememberOwnedPublishSlug(uploadResult.slug || slug, accessMode, ownerToken);
   return getCloudProjectShareLink(uploadResult.slug || slug, uploadResult.manifestUrl);
 }
 
