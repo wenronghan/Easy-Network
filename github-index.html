@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Easy Network</title>
+    <style>
+      html.app-loading body { visibility: hidden; }
+    </style>
+    <script>
+      document.documentElement.classList.add("app-loading");
+      window.setTimeout(() => document.documentElement.classList.remove("app-loading"), 4000);
+      function updateEasyNetworkTitle() {
+        document.title = "Easy Network";
+      }
+      updateEasyNetworkTitle();
+      window.addEventListener("hashchange", updateEasyNetworkTitle);
+    </script>
+    <link rel="stylesheet" href="styles.css?v=20260822-detail-order-french-owned-overwrite" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">EN</div>
+          <div>
+            <h1>Easy Network</h1>
+          </div>
+        </div>
+        <div class="manager-overview" aria-label="Workspace">
+          <button id="inventoryWorkspaceTab" class="manager-tab active" type="button">Inventory</button>
+          <button id="networkAnalysisLink" class="manager-tab" type="button">Network</button>
+          <span id="projectSummary" class="manager-status" hidden>Local project - 0 items</span>
+        </div>
+        <div class="topbar-actions">
+          <button id="undoBtn" class="icon-button" type="button" title="Undo" aria-label="Undo">↶</button>
+          <button id="themeToggleBtn" class="icon-button active" type="button" title="Toggle theme" aria-label="Toggle theme">☀</button>
+          <button id="languageToggleBtn" class="switch-button" type="button" title="Toggle language" aria-label="Toggle language">
+            <span>ZH</span><span>EN</span>
+          </button>
+          <button id="newProjectBtn" class="button subtle" type="button" hidden>New Project</button>
+          <label class="button primary" for="uploadCreateInput">Upload Images</label>
+          <input id="uploadCreateInput" class="visually-hidden" type="file" accept="image/*,.tif,.tiff" multiple />
+          <button id="exportProjectBtn" class="button subtle" type="button">Export</button>
+          <button id="importProjectBtn" class="button subtle" type="button">Import</button>
+          <input id="importProjectInput" class="visually-hidden" type="file" accept=".zip,.easy-network.zip,application/zip" />
+          <button id="copyProjectLinkBtn" class="button subtle" type="button" hidden>Copy Project Link</button>
+          <button id="copyItemLinkBtn" class="button subtle" type="button" hidden>Copy Item Link</button>
+          <button id="copyToLibraryBtn" class="button primary" type="button" hidden>Copy to My Library</button>
+          <button id="createEmptyBtn" class="button" type="button">New Item</button>
+          <button id="openProjectBtn" class="button subtle" type="button" hidden>Project Link</button>
+        </div>
+      </header>
+
+      <main id="workspace" class="workspace">
+        <aside class="sidebar">
+          <section class="panel">
+            <div class="section-title">
+              <span>Filters</span>
+              <div class="panel-title-actions">
+                <button id="collapseSidebarBtn" class="icon-button" type="button" title="Collapse filters">‹</button>
+                <button id="hideSidebarBtn" class="icon-button" type="button" title="Hide filters" hidden>×</button>
+              </div>
+            </div>
+            <label class="field-label" for="searchInput">Field or Content</label>
+            <input id="searchInput" class="input" type="search" placeholder="Search title, location, content" />
+            <label class="field-label" for="fieldFilterSelect">Field</label>
+            <select id="fieldFilterSelect" class="input"></select>
+            <label class="field-label" for="valueFilterInput">Field Value</label>
+            <input id="valueFilterInput" class="input" type="search" placeholder="Filter by selected field" />
+            <button id="clearFiltersBtn" class="button subtle full" type="button" hidden>Clear Filters</button>
+          </section>
+
+          <section class="panel">
+            <div class="section-title">
+              <span>Fields</span>
+              <button id="addFieldBtn" class="icon-button" type="button" title="Add field">+</button>
+            </div>
+            <div id="fieldList" class="field-list"></div>
+          </section>
+
+          <section class="panel architecture-note">
+            <div class="section-title">Local Archive</div>
+            <p>Project -> Artifact -> Images / Metadata</p>
+            <p>Local data is stored in this browser. Export creates a portable file or share link.</p>
+          </section>
+        </aside>
+        <div id="sidebarResizer" class="sidebar-resizer" title="Resize filters"></div>
+        <button id="showSidebarBtn" class="show-sidebar-button hidden" type="button">Filters</button>
+
+        <section class="collection-pane">
+          <div class="collection-toolbar">
+            <div>
+              <h2>Inventory</h2>
+              <div id="storageBreadcrumb" class="storage-breadcrumb"></div>
+              <p id="selectionSummary">0 items</p>
+            </div>
+            <div class="toolbar-controls">
+              <select id="storageViewSelect" class="input compact-select" title="Storage view"></select>
+              <label id="libraryUploadBtn" class="button primary" for="uploadCreateInput">Upload Images</label>
+              <button id="libraryCreateEmptyBtn" class="button" type="button">New Item</button>
+              <button id="sortToggleBtn" class="button subtle" type="button">Sort</button>
+              <div class="view-toggle" role="group" aria-label="View mode">
+                <button id="gridViewBtn" class="segmented active" type="button">Grid</button>
+                <button id="listViewBtn" class="segmented" type="button">List</button>
+              </div>
+              <select id="gridCardFieldSelect" class="input compact-select grid-card-field-select" title="Grid card top field"></select>
+              <select id="gridCardFooterFieldSelect" class="input compact-select grid-card-field-select" title="Grid card bottom field"></select>
+            </div>
+          </div>
+          <div id="sortPanel" class="sort-panel hidden">
+            <div id="sortRules" class="sort-rules"></div>
+            <button id="addSortRuleBtn" class="button subtle" type="button">Add sort level</button>
+            <button id="clearSortBtn" class="button subtle" type="button">Clear sort</button>
+          </div>
+          <div id="listControls" class="list-controls hidden">
+            <label>Horizontal scroll <input id="tableScrollSlider" type="range" min="0" max="100" value="0" /></label>
+            <label>Table size <input id="tableScaleSlider" type="range" min="30" max="260" value="100" /></label>
+          </div>
+          <div id="collectionSurface" class="collection-surface">
+            <div id="gridView" class="grid-view"></div>
+            <div id="listView" class="list-view hidden"></div>
+            <div id="selectionBox" class="selection-box hidden"></div>
+            <div id="emptyState" class="empty-state hidden">
+              <h3>No items yet</h3>
+              <p>Upload images to create items, or create an empty item first.</p>
+            </div>
+          </div>
+          <div id="stickyTableScrollbar" class="sticky-table-scrollbar hidden" aria-label="Table horizontal scroll">
+            <div id="stickyTableScrollbarTrack"></div>
+          </div>
+        </section>
+
+        <div id="detailResizer" class="detail-resizer" title="Resize details"></div>
+        <aside id="detailPane" class="detail-pane">
+          <button id="detailCollapseBtn" class="detail-collapse" type="button" title="Collapse details">›</button>
+          <div id="detailEmpty" class="detail-empty">
+            <h2>Select an Item</h2>
+            <p>The right pane shows images, thumbnails, metadata, and custom fields.</p>
+          </div>
+          <div id="detailContent" class="detail-content hidden">
+            <div class="detail-header">
+              <div>
+                <h2 id="detailTitle">Untitled</h2>
+                <p id="detailId"></p>
+              </div>
+              <button id="openDetailTabsBtn" class="button subtle" type="button">Expand</button>
+            </div>
+
+            <div class="detail-editor-layout">
+              <div class="detail-media-column">
+                <div class="image-stage">
+                  <div id="imageViewport" class="image-viewport">
+                    <img id="mainImage" alt="Item image" />
+                    <div id="noImageState" class="no-image">No image for this item</div>
+                  </div>
+                  <div class="image-controls">
+                    <button id="panModeBtn" class="icon-button hand-button" type="button" title="Pan"></button>
+                    <label for="zoomSlider">Zoom</label>
+                    <input id="zoomSlider" class="zoom-slider" type="range" min="1" max="4" step="0.05" value="1" />
+                    <button id="resetViewBtn" class="icon-button" type="button" title="Reset view">1:1</button>
+                    <button id="deleteImageBtn" class="icon-button delete-image-button" type="button" title="Delete current image" aria-label="Delete current image">×</button>
+                  </div>
+                </div>
+                <div id="thumbnailStrip" class="thumbnail-strip"></div>
+                <label class="button full" for="addImagesInput">Upload Images to Current Item</label>
+                <input id="addImagesInput" class="visually-hidden" type="file" accept="image/*,.tif,.tiff" multiple />
+              </div>
+
+              <div class="detail-fields-column">
+                <div id="metadataBlock" class="metadata-block">
+                  <div class="section-title">
+                    <span id="metadataTitle">Metadata</span>
+                    <button id="metadataCollapseBtn" class="icon-button" type="button" title="Collapse metadata" aria-label="Collapse metadata">⌃</button>
+                  </div>
+                  <div id="metadataFields" class="metadata-fields"></div>
+                </div>
+
+                <div class="metadata-block">
+                  <div class="section-title">
+                    <span>Custom Fields</span>
+                    <button id="addCustomFieldBtn" class="icon-button" type="button" title="Add custom field">+</button>
+                  </div>
+                  <div id="customFields" class="metadata-fields"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </main>
+
+      <section id="networkWorkspace" class="network-tab-panel hidden" aria-label="Network analysis workspace">
+        <iframe id="networkFrame" title="Network analysis" data-src="network.html?embedded=1&v=20260822-detail-order-french-owned-overwrite"></iframe>
+      </section>
+    </div>
+
+    <div id="columnMenu" class="context-menu hidden"></div>
+    <input id="csvImportInput" class="visually-hidden" type="file" accept=".csv,text/csv" />
+
+    <div id="summaryDialog" class="dialog-backdrop hidden" role="dialog" aria-modal="true">
+      <div class="dialog summary-dialog">
+        <div class="dialog-header">
+          <h2 id="summaryDialogTitle">Item Summary</h2>
+          <button id="closeSummaryDialogBtn" class="icon-button" type="button">x</button>
+        </div>
+        <div id="summaryContent" class="summary-content"></div>
+        <div class="dialog-actions">
+          <button id="summaryExportCsvBtn" class="button primary" type="button">Export CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="projectDialog" class="dialog-backdrop hidden" role="dialog" aria-modal="true">
+      <div class="dialog">
+        <div class="dialog-header">
+          <h2>Project Link Preview</h2>
+          <button id="closeProjectDialogBtn" class="icon-button" type="button">x</button>
+        </div>
+        <p>Project links are generated from the Export dialog.</p>
+        <a class="share-link" id="shareLink" href="#/share/share-local-archive"></a>
+      </div>
+    </div>
+
+    <div id="fieldDialog" class="dialog-backdrop hidden" role="dialog" aria-modal="true">
+      <div class="dialog">
+        <div class="dialog-header">
+          <h2>Add Custom Field</h2>
+          <button id="closeFieldDialogBtn" class="icon-button" type="button">x</button>
+        </div>
+        <label class="field-label" for="fieldNameInput">Field name</label>
+        <input id="fieldNameInput" class="input" type="text" placeholder="Condition, excavation unit, material" />
+        <label class="field-label" for="fieldScopeSelect">Add to</label>
+        <select id="fieldScopeSelect" class="input">
+          <option value="all" selected>All items</option>
+          <option value="current">Current item only</option>
+          <option value="filtered">Filtered items</option>
+        </select>
+        <div id="fieldScopeFilter" class="scope-filter hidden">
+          <label class="field-label" for="scopeFieldSelect">Filter field</label>
+          <select id="scopeFieldSelect" class="input"></select>
+          <label class="field-label" for="scopeValueInput">Existing value or new value</label>
+          <input id="scopeValueInput" class="input" type="text" list="scopeValueOptions" placeholder="Choose an existing value or type a new one" />
+          <datalist id="scopeValueOptions"></datalist>
+        </div>
+        <div class="dialog-actions">
+          <button id="confirmFieldBtn" class="button primary" type="button">Add Field</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="expandedView" class="expanded-view hidden">
+      <div class="expanded-header">
+        <div>
+          <h2 id="expandedTitle">Details</h2>
+          <p id="expandedSubTitle"></p>
+        </div>
+        <div class="expanded-actions">
+          <button class="tab-button active" data-tab="image" type="button">Image</button>
+          <button class="tab-button" data-tab="metadata" type="button">Metadata</button>
+          <button class="tab-button" data-tab="fields" type="button">Fields</button>
+          <button id="closeExpandedBtn" class="button" type="button">Close</button>
+        </div>
+      </div>
+      <div class="expanded-body">
+        <section id="expandedImageTab" class="expanded-tab">
+          <div class="expanded-image-layout">
+            <div id="expandedImageViewport" class="image-viewport large">
+              <img id="expandedImage" alt="Large item image" />
+              <div id="expandedNoImageState" class="no-image">No image for this item</div>
+            </div>
+            <aside class="expanded-side-editor">
+              <div class="image-controls">
+                <button id="expandedPanModeBtn" class="icon-button hand-button" type="button" title="Pan"></button>
+                <label for="expandedZoomSlider">Zoom</label>
+                <input id="expandedZoomSlider" class="zoom-slider" type="range" min="1" max="5" step="0.05" value="1" />
+                <button id="expandedResetViewBtn" class="icon-button" type="button">1:1</button>
+              </div>
+              <div class="image-adjustments">
+                <label>Brightness <input id="imageBrightnessControl" type="range" min="0.2" max="2" step="0.05" value="1" /></label>
+                <label>Contrast <input id="imageContrastControl" type="range" min="0.2" max="2" step="0.05" value="1" /></label>
+                <label>Saturation <input id="imageSaturationControl" type="range" min="0" max="2.5" step="0.05" value="1" /></label>
+                <label>Exposure <input id="imageExposureControl" type="range" min="0.2" max="2" step="0.05" value="1" /></label>
+                <button id="saveImageAdjustmentsBtn" class="button subtle" type="button">Save adjustments</button>
+              </div>
+              <div class="metadata-block">
+                <div class="section-title">Metadata</div>
+                <div id="expandedInlineMetadataFields" class="metadata-fields"></div>
+              </div>
+              <div class="metadata-block">
+                <div class="section-title">Fields <button id="expandedInlineAddFieldBtn" class="icon-button" type="button">+</button></div>
+                <div id="expandedInlineCustomFields" class="metadata-fields"></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+        <section id="expandedMetadataTab" class="expanded-tab hidden">
+          <div id="expandedMetadataFields" class="expanded-form"></div>
+        </section>
+        <section id="expandedFieldsTab" class="expanded-tab hidden">
+          <div class="expanded-field-actions">
+            <button id="expandedAddFieldBtn" class="button primary" type="button">Add Field</button>
+          </div>
+          <div id="expandedCustomFields" class="expanded-form"></div>
+        </section>
+      </div>
+    </div>
+
+    <script src="utif.min.js?v=20260815-tiff-support"></script>
+    <script src="app.js?v=20260822-html-repair"></script>
+  </body>
+</html>
