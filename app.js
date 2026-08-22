@@ -4635,9 +4635,9 @@ function sortArtifacts(artifacts) {
 function getFieldValue(artifact, field) {
   if (!field) return "";
   if (field.label === "ID") return artifact.id;
-  if (field.isSystemField) return artifact.metadata?.[field.label] || "";
+  if (field.isSystemField) return repairTextValue(artifact.metadata?.[field.label] || "");
   if (!fieldAppliesToArtifact(field, artifact)) return "";
-  return artifact.customFields?.[field.id] || "";
+  return repairTextValue(artifact.customFields?.[field.id] || "");
 }
 
 function fieldAppliesToArtifact(field, artifact) {
@@ -4715,11 +4715,88 @@ function normalize(value) {
 }
 
 function cleanCell(value) {
-  return String(value ?? "").replace(/\uFEFF/g, "").trim();
+  return repairTextValue(String(value ?? "").replace(/\uFEFF/g, "")).trim();
 }
 
 function normalizeHeader(value) {
   return cleanCell(value).toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+const WINDOWS_1252_REVERSE = new Map([
+  [0x20AC, 0x80], [0x201A, 0x82], [0x0192, 0x83], [0x201E, 0x84],
+  [0x2026, 0x85], [0x2020, 0x86], [0x2021, 0x87], [0x02C6, 0x88],
+  [0x2030, 0x89], [0x0160, 0x8A], [0x2039, 0x8B], [0x0152, 0x8C],
+  [0x017D, 0x8E], [0x2018, 0x91], [0x2019, 0x92], [0x201C, 0x93],
+  [0x201D, 0x94], [0x2022, 0x95], [0x2013, 0x96], [0x2014, 0x97],
+  [0x02DC, 0x98], [0x2122, 0x99], [0x0161, 0x9A], [0x203A, 0x9B],
+  [0x0153, 0x9C], [0x017E, 0x9E], [0x0178, 0x9F]
+]);
+
+const COMMON_MOJIBAKE_REPLACEMENTS = [
+  ["\u00c3\u00a0", "\u00e0"], ["\u00c3\u00a2", "\u00e2"], ["\u00c3\u00a4", "\u00e4"],
+  ["\u00c3\u00a7", "\u00e7"], ["\u00c3\u00a8", "\u00e8"], ["\u00c3\u00a9", "\u00e9"],
+  ["\u00c3\u00aa", "\u00ea"], ["\u00c3\u00ab", "\u00eb"], ["\u00c3\u00ae", "\u00ee"],
+  ["\u00c3\u00af", "\u00ef"], ["\u00c3\u00b4", "\u00f4"], ["\u00c3\u00b6", "\u00f6"],
+  ["\u00c3\u00b9", "\u00f9"], ["\u00c3\u00bb", "\u00fb"], ["\u00c3\u00bc", "\u00fc"],
+  ["\u00c5\u0093", "\u0153"], ["\u00c3\u0080", "\u00c0"], ["\u00c3\u0082", "\u00c2"],
+  ["\u00c3\u0084", "\u00c4"], ["\u00c3\u0087", "\u00c7"], ["\u00c3\u0088", "\u00c8"],
+  ["\u00c3\u0089", "\u00c9"], ["\u00c3\u008a", "\u00ca"], ["\u00c3\u008b", "\u00cb"],
+  ["\u00c3\u008e", "\u00ce"], ["\u00c3\u008f", "\u00cf"], ["\u00c3\u0094", "\u00d4"],
+  ["\u00c3\u0099", "\u00d9"], ["\u00c3\u009b", "\u00db"], ["\u00c3\u009c", "\u00dc"],
+  ["\u00c5\u0092", "\u0152"], ["\u00e2\u20ac\u2122", "\u2019"], ["\u00e2\u20ac\u0153", "\u201c"],
+  ["\u00e2\u20ac\u009d", "\u201d"], ["\u00e2\u20ac\u201c", "\u2013"], ["\u00e2\u20ac\u201d", "\u2014"],
+  ["\u00c2\u00a0", " "]
+];
+
+function textDamageScore(value) {
+  const text = String(value || "");
+  return (text.match(/\uFFFD/g) || []).length * 10
+    + (text.match(/[ÃÂâ]/g) || []).length * 3
+    + (text.match(/[ï¿½]/g) || []).length * 2;
+}
+
+function decodeWindows1252Mojibake(value) {
+  const text = String(value || "");
+  if (!/[ÃÂâ]/.test(text)) return text;
+  const bytes = [];
+  for (const char of text) {
+    const code = char.codePointAt(0);
+    if (code <= 0xFF) {
+      bytes.push(code);
+    } else if (WINDOWS_1252_REVERSE.has(code)) {
+      bytes.push(WINDOWS_1252_REVERSE.get(code));
+    } else {
+      return text;
+    }
+  }
+  try {
+    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(new Uint8Array(bytes));
+    return textDamageScore(decoded) < textDamageScore(text) ? decoded : text;
+  } catch (error) {
+    return text;
+  }
+}
+
+function repairTextValue(value) {
+  if (value === null || value === undefined) return "";
+  let text = decodeWindows1252Mojibake(String(value));
+  COMMON_MOJIBAKE_REPLACEMENTS.forEach(([broken, fixed]) => {
+    text = text.replaceAll(broken, fixed);
+  });
+  text = text
+    .replace(/\bMus(?:\uFFFD|\u00ef\u00bf\u00bd){1,6}e\b/g, "Mus\u00e9e")
+    .replace(/\bmus(?:\uFFFD|\u00ef\u00bf\u00bd){1,6}e\b/g, "mus\u00e9e")
+    .replace(/\bd(?:\uFFFD|\u00ef\u00bf\u00bd){1,6}Arte\b/g, "d\u2019Arte")
+    .replace(/(\d)(?:\uFFFD|\u00ef\u00bf\u00bd)+C(\d)/g, "$1-$2")
+    .replace(/(\d)(?:\uFFFD|\u00ef\u00bf\u00bd){1,6}(\d)/g, "$1-$2");
+  return text;
+}
+
+function repairTextDeep(value) {
+  if (typeof value === "string") return repairTextValue(value);
+  if (Array.isArray(value)) return value.map((entry) => repairTextDeep(entry));
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, repairTextDeep(entry)]));
 }
 
 function findCsvColumn(headers, names) {
@@ -4799,18 +4876,18 @@ async function readTextFile(file) {
   const bytes = await file.arrayBuffer();
   const view = new Uint8Array(bytes);
   if (view[0] === 0xEF && view[1] === 0xBB && view[2] === 0xBF) {
-    return new TextDecoder("utf-8").decode(view.slice(3));
+    return repairTextValue(new TextDecoder("utf-8").decode(view.slice(3)));
   }
   if (view[0] === 0xFF && view[1] === 0xFE) {
-    return new TextDecoder("utf-16le").decode(view.slice(2));
+    return repairTextValue(new TextDecoder("utf-16le").decode(view.slice(2)));
   }
   if (view[0] === 0xFE && view[1] === 0xFF) {
-    return new TextDecoder("utf-16be").decode(view.slice(2));
+    return repairTextValue(new TextDecoder("utf-16be").decode(view.slice(2)));
   }
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(view);
+    return repairTextValue(new TextDecoder("utf-8", { fatal: true }).decode(view));
   } catch (error) {
-    return new TextDecoder("windows-1252").decode(view);
+    return repairTextValue(new TextDecoder("windows-1252").decode(view));
   }
 }
 
@@ -5225,6 +5302,7 @@ function normalizeProjectManifest(raw, basePath = "") {
   if (!raw || Number(raw.schemaVersion) > PROJECT_PACKAGE_SCHEMA_VERSION) {
     throw new Error("This project package uses an unsupported schema version.");
   }
+  raw = repairTextDeep(raw);
   const slug = raw.slug || slugifyProjectName(raw.project?.title || raw.project?.storageName || "published-project");
   const baseUrl = basePath ? new URL(basePath, location.href) : null;
   const images = (raw.images || []).map((image) => {
